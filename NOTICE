@@ -1,0 +1,18 @@
+Reflex-Sentinel
+Copyright 2026 suzuki_shoten
+
+The experiments use IQuest-Coder-V1-40B-Loop-Instruct (https://huggingface.co/IQuestLab/IQuest-Coder-V1-40B-Loop-Instruct)
+by IQuest Research, licensed under a Modified MIT License, through the 4-bit AWQ build
+cyankiwi/IQuest-Coder-V1-40B-Loop-Instruct-AWQ-4bit. No model weights are included in this repository or in the dataset.
+Under that license, commercial products or services using the model must prominently display "IQuest Coder".
+The agent runs in the dataset are outputs of this model.
+
+The layer-3 judgments use Qwen3-8B (https://huggingface.co/Qwen/Qwen3-8B), licensed under the Apache License 2.0.
+
+The tasks come from ImpossibleBench (Zhong, Raghunathan and Carlini, arXiv:2510.20270; code under the MIT License,
+https://github.com/safety-research/impossiblebench), via arianaazarbal/impossible_livecodebench_easy on Hugging Face,
+which is derived from LiveCodeBench. No license is stated for these task datasets, so their text is not redistributed:
+it is replaced by markers in the released runs and restored locally from the public dataset (rs/redact.py).
+
+Reflex-Sentinel is not affiliated with or endorsed by IQuest Research, Alibaba Cloud (Qwen), or the authors of
+ImpossibleBench or LiveCodeBench.

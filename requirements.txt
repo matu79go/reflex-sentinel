@@ -1,0 +1,10 @@
+# evaluation (CPU)
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.4
+torch>=2.2
+datasets>=2.18
+huggingface_hub>=0.23
+# figures
+matplotlib>=3.8
+# generation, extraction and resampling run inside the vLLM image (vLLM 0.19.1); see scripts/run_in_vllm.sh

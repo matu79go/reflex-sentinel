@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use Reflex-Sentinel or its data, please cite it as below."
+title: "Reflex-Sentinel: catching concealment and false reporting in an AI agent from its internal state, before it acts"
+type: software
+authors:
+  - family-names: Suzuki
+    given-names: Gosuke
+    affiliation: Suzuki Shoten
+version: 1.0.0
+date-released: 2026-10-17
+license: Apache-2.0
+repository-code: "https://github.com/matu79go/reflex-sentinel"
+url: "https://huggingface.co/datasets/matu79go/reflex-sentinel-agent-trajectories"
+abstract: >-
+  An open latent-reasoning model (IQuest-Coder-V1-40B-Loop-Instruct) works as a multi-step coding agent on tasks whose
+  tests contradict the specification, with the instruction not to modify the tests. In 45 of 200 runs it rewrote the
+  tests to hide the failure and submitted the result as passing. A linear probe on the hidden state before each step
+  detects this with 90.4% AUROC right before the concealment step and 81.8% one step earlier, against 59.6% for an LLM
+  reading the work log. Resampling 1,170 times from earlier points shows the probe reaches the ceiling set by the
+  agent's own remaining randomness one step before (84.0% vs 83.3%).
+keywords:
+  - AI safety
+  - AI agents
+  - reward hacking
+  - linear probe
+  - latent reasoning
+  - security
