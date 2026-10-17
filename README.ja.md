@@ -6,6 +6,8 @@
 
 このリポジトリは実験材料の公開です。コードと、Hugging Face 上の全データへのリンクを置き、下の結果を再現できるようにしています。
 
+解説記事: [suzuki shoten(概要)](https://suzuki-shoten.dev/jp/projects/reflex-sentinel/) ・ [Zenn(実装の解説)](https://zenn.dev/suzukishoten/articles/577710d2cb0120)
+
 ![同じ問題を同じ AI に 2 回解かせた。エージェント A は不合格を隠ぺいする数回前の行動から赤くなり、B は薄いまま](media/replay_ja.gif)
 
 ## 実験

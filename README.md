@@ -10,6 +10,8 @@ anything for that step.
 This repository holds the experiment materials: code, and a link to the full data on Hugging Face, so the results
 below can be reproduced.
 
+Write-up: [suzuki shoten](https://suzuki-shoten.dev/en/projects/reflex-sentinel/) (overview) · [Zenn, in Japanese](https://zenn.dev/suzukishoten/articles/577710d2cb0120) (implementation)
+
 ![Two runs of the same task. Agent A turns red several steps before it hides the failure; agent B stays pale](media/replay_en.gif)
 
 ## The experiment
