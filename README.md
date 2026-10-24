@@ -10,7 +10,7 @@ anything for that step.
 This repository holds the experiment materials: code, and a link to the full data on Hugging Face, so the results
 below can be reproduced.
 
-> **Using Claude Code?** [RS guard](guard/README.md) (usage in the "RS guard" section below), which stops unusual actions before they run, is ready to install today.
+> **Using Claude Code, Codex, Cursor, Copilot …?** [RS guard](guard/README.md) (usage in the "RS guard" section below), which stops unusual actions before they run, is ready to install today.
 
 Write-up: [suzuki shoten](https://suzuki-shoten.dev/en/projects/reflex-sentinel/) (overview) · [Zenn, in Japanese](https://zenn.dev/suzukishoten/articles/577710d2cb0120) (implementation)
 
@@ -163,11 +163,11 @@ you can afford to lose, never on a host with credentials.
 | `rs/export_heatmap.py`, `rs/make_figures.py` | figures (`--lang en` / `ja`) |
 | `rs/redact.py`, `rs/build_release.py` | how the released data was made |
 
-## RS guard (a guard for Claude Code and other agents, ready to use today)
+## RS guard (a guard for Claude Code, Codex, Cursor, Copilot and other agents, ready to use today)
 
 **Right before an AI agent uses a tool, RS guard stops the action and asks you if it is outside your usual work.** Your usual work is built automatically from the Claude Code logs already on your machine; nobody writes an allow list. No LLM calls, nothing leaves your machine (about 0.1 s per decision).
 
-RS itself reads internal state and needs a model you run yourself. RS guard watches **the actions** instead, so it works with agents you cannot look inside, such as Claude Code.
+RS itself reads internal state and needs a model you run yourself. RS guard watches **the actions** instead, so it works with agents you cannot look inside. It hooks into Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (CLI, VS Code), Cline and Windsurf.
 
 ### What it stops
 
@@ -193,12 +193,12 @@ When it stops, Claude Code shows its usual confirmation prompt. Choose Yes for n
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.0.0#subdirectory=guard"
-~/.rs-guard/venv/bin/rs-guard learn            # build your usual work from local logs
-~/.rs-guard/venv/bin/rs-guard install claude   # add hooks to Claude Code (keeps existing settings, saves a backup)
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.0#subdirectory=guard"
+~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
+~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (keeps existing settings, saves a backup)
 ```
 
-Then use Claude Code as usual. `rs-guard status` shows how often it asked; `rs-guard explain` shows recent confirmations, why, and whether you approved. To remove it, restore `~/.claude/settings.json.rs-guard.bak`.
+Then use your agent as usual. Tools without a confirmation prompt (Codex, Gemini CLI, Cline, Windsurf) block once and the agent comes back to ask you; reply "ok" if it is fine. Per-tool notes: [`guard/README.md`](guard/README.md#supported-tools). `rs-guard status` shows how often it asked; `rs-guard explain` shows recent confirmations, why, and whether you approved. To remove it, restore `~/.claude/settings.json.rs-guard.bak`.
 
 How it decides, what it cannot stop (abuse inside your usual work, …), files and privacy, and how to reproduce: [`guard/README.md`](guard/README.md).
 

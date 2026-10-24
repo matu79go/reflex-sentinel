@@ -8,7 +8,8 @@
 RS: send_email の to が search_calendar_events の結果から来た値です。似た過去の依頼では、この形はありません。
 ```
 
-- **普段は自動で作る**: 手元に既にある会話記録(Claude Code は `~/.claude/projects/`)から、入れた日に作ります。許す手の一覧を人が書く必要はありません。
+- **人気の道具すべてで使える**: Claude Code・Codex CLI・Gemini CLI・Cursor・GitHub Copilot(CLI・VS Code)・Cline・Windsurf の実行前のフックにつなぎます。判定と普段は 1 つで、道具をまたいで同じ物差しで見ます。
+- **普段は自動で作る**: 手元に既にある会話記録(Claude Code・Codex)から、入れた日に作ります。許す手の一覧を人が書く必要はありません。
 - **1 回で覚える**: 確認で通した手は、その場で普段に加わります。
 - **LLM を呼ばない・何も外へ送らない**: 判定は記録との照合だけで、1 回 0.1 秒ほど(フックの起動を含む)です。
 
@@ -59,16 +60,35 @@ Reflex-Sentinel(RS)の一部です。RS 本体は、AI エージェントの行�
 
 開発者 1 人の Claude Code の会話記録 73 本を時刻順に流し、最後の 7 日(手 5,342 回)を数えると、確認を求めたのは 52 回(**1 日 7.4 回**)でした。内訳は、MCP・Web の手 1 日 3.4 回、シェル・ファイルなど 1 日 4.3 回(初めての送り先・鍵を読んだ後の初めての送り先・初めて触る秘密やパッケージ・初めて使う消す / 設定を変えるコマンド)。どれも、確認で通すとその場で普段に加わり、次からは聞きません。
 
-## 入れ方(Claude Code)
+Codex の会話記録 15 本(9 日、手 2,579 回)を同じように流すと、確認は 12 回(使った日 1 日あたり 1.3 回。初めて使う `rm`・`git push`・`kill` など)でした。
+
+## 入れ方
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.0.0#subdirectory=guard"
-~/.rs-guard/venv/bin/rs-guard learn            # 手元の会話記録から普段を作る
-~/.rs-guard/venv/bin/rs-guard install claude   # ~/.claude/settings.json にフックを 3 つ足す
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.0#subdirectory=guard"
+~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
+~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(1 つだけなら install codex など)
 ```
 
-- `install` は既存のフックを残し、元の設定を `~/.claude/settings.json.rs-guard.bak` に保存します。外す時はこれに戻すか、`hooks` の rs-guard の 3 行を消します。
+### 使える道具
+
+| 道具 | つなぐ所 | 普段に無い手の時 | 確かめたこと |
+|---|---|---|---|
+| Claude Code | `~/.claude/settings.json`(PreToolUse ほか) | 確認の画面 | 実物で動作 |
+| Codex CLI | `~/.codex/hooks.json`(PreToolUse ほか) | 一度止める → 良いと言った後のやり直しで通る | 会話記録から普段を作れる・資料の形の入力で試験 |
+| Gemini CLI | `~/.gemini/settings.json`(BeforeTool ほか) | 一度止める → 同上 | 資料の形の入力で試験 |
+| Cursor | `~/.cursor/hooks.json`(beforeShellExecution・beforeMCPExecution・beforeReadFile ほか) | 確認の画面 | 資料の形の入力で試験 |
+| GitHub Copilot(CLI・VS Code) | `~/.copilot/hooks/rs-guard.json`(preToolUse ほか) | 確認の画面 | 資料の形の入力で試験 |
+| Cline | `~/Documents/Cline/Rules/Hooks/`(PreToolUse ほか) | 一度止める → 同上 | 資料の形の入力で試験 |
+| Windsurf | `~/.codeium/windsurf/hooks.json`(pre_run_command ほか) | 一度止める → 同上 | 資料の形の入力で試験 |
+
+- **確認の画面が無い道具**(Codex・Gemini CLI・Cline・Windsurf)では、普段に無い手を一度止め、エージェントに「利用者に確かめて」と伝えます。あなたが返事をした後に同じ手が来たら通し、普段に加えます。あなたの発言をはさまないやり直しは通しません。
+- Codex は、入れた後に Codex の中で `/hooks` から rs-guard のフックを信頼するまで動きません。Gemini CLI は `/hooks enable-all` が要ることがあります。Cline は設定の Features でフックを有効にします。
+- Cursor は、ファイルの書き込みに実行前のフックが無いため、書いた後に普段へ入れるだけです(シェル・MCP・読み込みは実行前に見ます)。
+- 普段は、Claude Code と Codex は会話記録から入れた日に作ります。他の道具は、使うたびに実行された手を普段に加えていきます(普段はすべての道具で共通)。
+- Windows で動く道具(Windows 版の VS Code・Cursor など)には、Windows の Python で同じ手順で入れてください(WSL に入れた物は Windows の道具からは呼ばれません)。
+- `install` は既存のフックを残し、初めて触る設定は元を `<設定>.rs-guard.bak` に保存します。外す時はこれに戻すか、rs-guard の行を消します。
 - 確認の回数と理由: `rs-guard status` / `rs-guard explain`。
 - 理由の文は `LANG` に合わせて日本語か英語です(`~/.rs-guard/config.json` の `"lang": "ja"` か `RS_GUARD_LANG` で固定)。
 - 依存するパッケージはありません(Python 3.9 以上)。
@@ -125,7 +145,7 @@ python3 -m venv ~/.rs-guard/venv
 - コマンドの見分けは決まった規則(名前の一覧と正規表現)です。一覧に無い道具で送る手は「初めてのコマンド」としては拾いません。
 - 初めての種類の依頼では、外に作用する手のたびに確認を求めます(使うほど減ります)。
 - 会話記録は末尾 4 MB だけ読みます(速さのため)。それより前の結果に出た値は「どこにも無い」扱いになり、Web を開く手では通ります。
-- v1.0 は Claude Code だけです。
+- Claude Code 以外の道具は、各道具の公式の資料(2026-10 時点)の入力の形で試験しています。道具の版で形が変わると読めないことがあります(その時は何もせず通します)。
 
 ## 先行研究との関係
 

@@ -10,7 +10,8 @@ Example: you asked "Who is coming to tomorrow's meeting?", and the agent is abou
 RS: the to of send_email comes from the result of search_calendar_events. Similar past requests never had this shape.
 ```
 
-- **Your usual work is built automatically** from the conversation logs already on your machine (`~/.claude/projects/` for Claude Code), on the day you install it. Nobody has to write an allow list.
+- **Works with the popular agent tools**: hooks into Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (CLI, VS Code), Cline and Windsurf. One decision engine and one usual work, the same yardstick across tools.
+- **Your usual work is built automatically** from the conversation logs already on your machine (Claude Code, Codex), on the day you install it. Nobody has to write an allow list.
 - **Learns in one step**: an action you approve at a confirmation becomes part of your usual work right away.
 - **No LLM calls, nothing leaves your machine**: each decision is a lookup against your logs and takes about 0.1 s (including hook start-up).
 
@@ -61,16 +62,35 @@ This agent never followed injections hidden in files. So we also checked whether
 
 Replaying one developer's Claude Code logs (73 conversations) in time order and counting the last 7 days (5,342 actions), RS guard asked 52 times (**7.4 per day**): 3.4 per day for MCP / web actions and 4.3 per day for shell, files and others (a new destination, a new destination after reading keys, a secret or package touched for the first time, a delete / config command used for the first time). Each one you approve joins your usual work and is not asked again.
 
-## Install (Claude Code)
+Replaying 15 Codex logs the same way (9 days, 2,579 actions) gave 12 confirmations (1.3 per day of use; first-time `rm`, `git push`, `kill`, …).
+
+## Install
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.0.0#subdirectory=guard"
-~/.rs-guard/venv/bin/rs-guard learn            # build your usual work from local logs
-~/.rs-guard/venv/bin/rs-guard install claude   # add 3 hooks to ~/.claude/settings.json
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.0#subdirectory=guard"
+~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
+~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (or: install codex, …)
 ```
 
-- `install` keeps existing hooks and saves the original settings to `~/.claude/settings.json.rs-guard.bak`. To remove RS guard, restore that file or delete the three rs-guard entries under `hooks`.
+### Supported tools
+
+| Tool | Hooked via | On an unusual action | Verified |
+|---|---|---|---|
+| Claude Code | `~/.claude/settings.json` (PreToolUse, …) | confirmation prompt | runs on the real app |
+| Codex CLI | `~/.codex/hooks.json` (PreToolUse, …) | blocks once → goes through when retried after you approve | usual work built from its logs; tested with documented inputs |
+| Gemini CLI | `~/.gemini/settings.json` (BeforeTool, …) | blocks once → same | tested with documented inputs |
+| Cursor | `~/.cursor/hooks.json` (beforeShellExecution, beforeMCPExecution, beforeReadFile, …) | confirmation prompt | tested with documented inputs |
+| GitHub Copilot (CLI, VS Code) | `~/.copilot/hooks/rs-guard.json` (preToolUse, …) | confirmation prompt | tested with documented inputs |
+| Cline | `~/Documents/Cline/Rules/Hooks/` (PreToolUse, …) | blocks once → same | tested with documented inputs |
+| Windsurf | `~/.codeium/windsurf/hooks.json` (pre_run_command, …) | blocks once → same | tested with documented inputs |
+
+- **Tools without a confirmation prompt** (Codex, Gemini CLI, Cline, Windsurf): an unusual action is blocked once, and the agent is told to ask you. If the same action comes again after you reply, it goes through and joins your usual work. A retry with no message from you in between is still blocked.
+- Codex runs the hooks only after you trust them with `/hooks` inside Codex. Gemini CLI may need `/hooks enable-all`. Cline needs hooks enabled under Features in its settings.
+- Cursor has no pre-execution hook for file writes, so writes are only learned afterwards (shell, MCP and file reads are checked before they run).
+- Usual work is built from logs on install day for Claude Code and Codex. For the other tools it grows as you use them (usual work is shared across all tools).
+- For tools that run on Windows (Windows VS Code, Cursor, …), install with Windows Python using the same steps (a WSL install is not called by Windows tools).
+- `install` keeps existing hooks and, the first time it touches a file, saves the original as `<file>.rs-guard.bak`. To remove RS guard, restore that file or delete the rs-guard entries.
 - How often and why it asked: `rs-guard status` / `rs-guard explain`.
 - Reasons are shown in English or Japanese following `LANG` (fix it with `"lang": "en"` in `~/.rs-guard/config.json` or `RS_GUARD_LANG`).
 - No dependencies (Python 3.9+).
@@ -127,7 +147,7 @@ All files are mode 600. Nothing is sent anywhere.
 - Commands are recognized by fixed rules (name lists and regular expressions). Sending with a tool missing from the lists is not caught as "a new command".
 - For a new kind of request, every outward-acting call asks (this decreases with use).
 - Only the last 4 MB of the conversation log is read (for speed). Values that appeared only before that window count as "from nowhere", which lets web fetches through.
-- v1.0 supports Claude Code only.
+- Tools other than Claude Code are tested with the input formats in each tool's official docs (as of 2026-10). If a tool version changes the format, the input may not be read (RS guard then lets the action through).
 
 ## Related work
 

@@ -4,7 +4,9 @@
   rs-guard claude-pre       PreToolUse のフック(普段の範囲 → 何も出さない / 外れ → 確認を求める)
   rs-guard claude-post      PostToolUse のフック(実行された手を普段に加える、結果を会話ごとの覚え書きに足す)
   rs-guard claude-prompt    UserPromptSubmit のフック(利用者の発言を会話ごとの覚え書きに足す)
-  rs-guard install claude   ~/.claude/settings.json に 3 つのフックを足す(既存のフックは残す)
+  rs-guard install <道具>   道具の設定にフックを足す(既存のフックは残す)。道具 = claude / codex / gemini / cursor /
+                            copilot / cline / windsurf / all(入っている物すべて)
+  rs-guard hook <道具> <出来事>  各道具のフックの入口(入力・出力の形は agents.py でそろえる)
   rs-guard status / explain 普段の件数 / 最近の確認とその理由
 
 判定 = core.decide(MCP と Web の手を似た過去の依頼と比べる)+ acts(すべての手。シェル・ファイル・スクリプトを含む)。
@@ -18,7 +20,9 @@ import os
 import sys
 import time
 
-from . import acts, claude, core
+import hashlib
+
+from . import acts, agents, claude, core
 
 CLAUDE_PROJECTS = os.path.expanduser("~/.claude/projects")
 CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
@@ -164,11 +168,11 @@ def _row(session, tool, args, req, user_text, outputs):
 
 # ---- learn ----
 
-def rows_from_transcript(path, extra=()):
-    """1 つの会話記録 → 普段の行。成功した(失敗・拒否でない)外に作用する手だけ。"""
+def rows_from_transcript(path, extra=(), events=None):
+    """1 つの会話記録 → 普段の行。成功した(失敗・拒否でない)外に作用する手だけ。events = 会話記録の読み方(道具ごと)。"""
     session = os.path.splitext(os.path.basename(path))[0]
     humans, outputs, pending, rows = [], [], {}, []
-    for e in claude.events(path):
+    for e in (events or claude.events)(path):
         if e[0] == "human":
             humans.append(e[1])
         elif e[0] == "call":
@@ -182,10 +186,10 @@ def rows_from_transcript(path, extra=()):
     return rows
 
 
-def seen_from_transcript(path, seen):
+def seen_from_transcript(path, seen, events=None):
     """1 つの会話記録 → 普段(すべての手)に足す行。実行された(失敗・拒否でない)手だけ。"""
     humans, owns, outputs, pending, rows, files = [], [], [], {}, [], {}
-    for e in claude.events(path):
+    for e in (events or claude.events)(path):
         if e[0] == "human":
             humans.append(e[1]); owns.append(acts.split_own(e[1])[0])
         elif e[0] == "call" and humans:
@@ -204,6 +208,11 @@ def seen_from_transcript(path, seen):
 def cmd_learn(a):
     cfg = config()
     files = sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl")))
+    codex_dir = os.path.expanduser("~/.codex/sessions") if a.codex == "auto" and a.projects == CLAUDE_PROJECTS else (
+        a.codex if a.codex != "auto" else "")
+    codex = agents.codex_files(codex_dir) if codex_dir and os.path.isdir(codex_dir) else []
+    files += codex
+    reader = {p: agents.codex_events for p in codex}
     idx_p = _path("learned.json")
     try:
         with open(idx_p) as f:
@@ -219,8 +228,8 @@ def cmd_learn(a):
     keep = [r for r in _read_rows("normal.jsonl") if r.get("session") not in redo]
     new = []
     for p in todo:
-        new += rows_from_transcript(p, cfg["extra_tools"])
-        seen_rows += seen_from_transcript(p, seen)
+        new += rows_from_transcript(p, cfg["extra_tools"], reader.get(p))
+        seen_rows += seen_from_transcript(p, seen, reader.get(p))
         idx[p] = os.path.getsize(p)
     _append("seen.jsonl", seen_rows)
     tmp = _path("normal.jsonl.tmp")
@@ -231,7 +240,7 @@ def cmd_learn(a):
     os.replace(tmp, _path("normal.jsonl"))
     with os.fdopen(os.open(idx_p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
         json.dump(idx, f)
-    print(f"会話記録 {len(files)} 件(新しく読んだ {len(todo)} 件)→ 普段 {len(keep) + len(new)} 行・"
+    print(f"会話記録 {len(files)} 件(うち Codex {len(codex)} 件、新しく読んだ {len(todo)} 件)→ 普段 {len(keep) + len(new)} 行・"
           f"手の形 {len(seen.shapes)} 種・送り先 {len(seen.dests)} 件")
 
 
@@ -242,7 +251,32 @@ def _hook_input():
 
 
 def pre(inp, normal=None, cfg=None):
-    """PreToolUse の入力 → 出力する JSON(通すなら None)。"""
+    """PreToolUse の入力 → 出力する JSON(通すなら None)。Claude Code の形。"""
+    decision, reason, _ = judge(inp, normal, cfg)
+    if decision == "allow":
+        return None
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision,
+                                   "permissionDecisionReason": reason}}
+
+
+def _fingerprint(tool, args):
+    return hashlib.sha256(json.dumps([tool, args], sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:20]
+
+
+def _confirmed(session, fp):
+    """確認の画面が無い道具: 前に止めた同じ手が、その後に利用者の発言をはさんで、もう一度来たか。"""
+    after = None
+    for n in _notes(session):
+        if n["k"] == "denied" and n.get("fp") == fp:
+            after = False
+        elif n["k"] == "human" and after is False:
+            after = True
+    return after is True
+
+
+def judge(inp, normal=None, cfg=None, retry=False):
+    """共通の形の入力 → (allow / ask / deny, 理由, 合図)。
+    retry = 確認の画面が無い道具。確認の代わりに一度止め、利用者の発言の後に同じ手が来たら通す。"""
     cfg = cfg or config()
     tool, args = inp.get("tool_name", ""), inp.get("tool_input") or {}
     req, user_text, outputs, x = context_of(inp, full=True)
@@ -259,15 +293,21 @@ def pre(inp, normal=None, cfg=None):
         if r not in rules:
             rules.append(r); reasons.append(acts.reason(r, d, core._ja()))
     ok, reason = not rules, " ".join(reasons)
+    decision = "allow" if ok else "deny" if set(rules) & cfg["deny_rules"] else "ask"
+    if retry and decision == "ask":
+        fp = _fingerprint(tool, args)
+        if _confirmed(session, fp):
+            decision, rules, reason = "allow", ["confirmed"], ""
+        else:
+            _note(session, {"k": "denied", "fp": fp})
+            decision = "deny"
+            reason += (" (利用者に確かめてください。良いと言われたら、同じ手をもう一度実行すると通ります)" if core._ja() else
+                       " (Ask the user. If they approve, run the same action again and it will go through.)")
     if acting or rules:
         _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "session": inp.get("session_id"),
-                                     "id": inp.get("tool_use_id"), "tool": core.short_name(tool), "ok": ok, "reason": reason,
-                                     "rules": rules, "req": req[:80]}])
-    if ok:
-        return None
-    decision = "deny" if set(rules) & cfg["deny_rules"] else "ask"
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision,
-                                   "permissionDecisionReason": reason}}
+                                     "id": inp.get("tool_use_id"), "tool": core.short_name(tool), "ok": decision == "allow",
+                                     "reason": reason, "rules": rules, "req": req[:80], "agent": inp.get("_agent", "claude")}])
+    return decision, reason, rules
 
 
 def post(inp, cfg=None):
@@ -324,6 +364,42 @@ def cmd_claude_post(a):
         _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "error": repr(ex)[:200]}])
 
 
+def cmd_hook(a):
+    """各道具のフックの入口。RS 自身の不具合で仕事を止めない(落ちたら通す形を返し、記録に残す)。"""
+    agent, event = a.agent, a.event
+    kind = agents.EVENTS.get(agent, {}).get(event)
+    out, err, code = (agents.render(agent, event, "allow", "") if kind == "pre" else (agents.render_other(agent, kind), "", 0))
+    try:
+        raw = _hook_input()
+        kind, inps = agents.normalize(agent, event, raw)
+        for i in inps:
+            i["_agent"] = agent
+        if kind == "pre" and inps:
+            order = {"allow": 0, "ask": 1, "deny": 2}
+            worst, reasons = "allow", []
+            for i in inps:
+                d, r, _ = judge(i, retry=agent not in agents.ASK_OK)
+                if order[d] > order[worst]:
+                    worst = d
+                if r:
+                    reasons.append(r)
+            out, err, code = agents.render(agent, event, worst, " ".join(reasons))
+        elif kind == "post":
+            for i in inps:
+                post(i)
+        elif kind == "prompt":
+            for i in inps:
+                prompt(i)
+            clean_sessions()
+    except Exception as ex:  # noqa: BLE001
+        _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "agent": agent, "error": repr(ex)[:200]}])
+    if out:
+        print(out)
+    if err:
+        print(err, file=sys.stderr)
+    sys.exit(code)
+
+
 # ---- install ----
 
 HOOK_PRE, HOOK_POST, HOOK_PROMPT = "claude-pre", "claude-post", "claude-prompt"
@@ -353,21 +429,123 @@ def install_claude(settings):
     return settings
 
 
-def cmd_install(a):
-    if a.target != "claude":
-        sys.exit("v1.0 は claude だけです")
-    p = a.settings
+def _edit_json(p, fn):
+    """JSON の設定を読み、fn で足し、書き戻す。初めて触る時だけ元を .rs-guard.bak に残す。"""
     s = {}
     if os.path.exists(p):
         with open(p) as f:
             s = json.load(f)
-        with open(p + ".rs-guard.bak", "w") as f:
-            json.dump(s, f, ensure_ascii=False, indent=2)
-    install_claude(s)
+        if not os.path.exists(p + ".rs-guard.bak"):
+            with open(p + ".rs-guard.bak", "w") as f:
+                json.dump(s, f, ensure_ascii=False, indent=2)
+    fn(s)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     with open(p, "w") as f:
         json.dump(s, f, ensure_ascii=False, indent=2)
-    print(f"{p} に PreToolUse / PostToolUse / UserPromptSubmit を足しました(元の設定 = {p}.rs-guard.bak)")
+    return p
+
+
+def _hook_cmd(agent, event):
+    return f"{_exe()} hook {agent} {event}"
+
+
+def _has(entries, agent, event):
+    return any(f"hook {agent} {event}" in json.dumps(e) for e in entries)
+
+
+def _add_grouped(hooks, agent, events, hook, matcher):
+    """Claude Code・Codex・Gemini の形: {出来事: [{matcher, hooks: [...]}]}。"""
+    for ev, kind in events.items():
+        groups = hooks.setdefault(ev, [])
+        if _has(groups, agent, ev):
+            continue
+        g = {"hooks": [{"type": "command", "command": _hook_cmd(agent, ev), **hook}]}
+        groups.append({"matcher": matcher, **g} if kind != "prompt" and matcher else g)
+
+
+def _copilot_home():
+    return os.environ.get("COPILOT_HOME") or os.path.expanduser("~/.copilot")
+
+
+INSTALL_PATHS = {  # 道具 → 入っているかを見る場所
+    "codex": "~/.codex", "gemini": "~/.gemini", "cursor": "~/.cursor", "copilot": None,
+    "cline": "~/Documents/Cline", "windsurf": "~/.codeium/windsurf",
+}
+
+
+def install_agent(agent, settings_path=None):
+    """→ 書いた設定の場所。"""
+    ev = agents.EVENTS[agent]
+    if agent == "claude":
+        return _edit_json(settings_path or CLAUDE_SETTINGS, install_claude)
+    if agent == "codex":  # 使う前に Codex の中で /hooks から信頼する必要がある
+        return _edit_json(os.path.expanduser("~/.codex/hooks.json"),
+                          lambda s: _add_grouped(s.setdefault("hooks", {}), agent, ev, {"timeout": 30}, "*"))
+    if agent == "gemini":
+        return _edit_json(os.path.expanduser("~/.gemini/settings.json"),
+                          lambda s: _add_grouped(s.setdefault("hooks", {}), agent, ev,
+                                                 {"name": "rs-guard", "timeout": 30000}, ".*"))
+    if agent == "cursor":
+        def f(s):
+            s.setdefault("version", 1)
+            h = s.setdefault("hooks", {})
+            for e in ev:
+                if not _has(h.get(e, []), agent, e):
+                    h.setdefault(e, []).append({"command": _hook_cmd(agent, e), "timeout": 30})
+        return _edit_json(os.path.expanduser("~/.cursor/hooks.json"), f)
+    if agent == "copilot":  # Copilot CLI と VS Code の Copilot が読む利用者の置き場。rs-guard だけのファイル
+        p = os.path.join(_copilot_home(), "hooks", "rs-guard.json")
+        return _edit_json(p, lambda s: s.update({"version": 1, "hooks": {
+            e: [{"type": "command", "bash": _hook_cmd(agent, e), "timeoutSec": 30}] for e in ev}}))
+    if agent == "cline":  # 出来事の名前のファイル(拡張子なし・実行できる)を置く
+        d = os.path.expanduser("~/Documents/Cline/Rules/Hooks")
+        os.makedirs(d, exist_ok=True)
+        for e in ev:
+            p = os.path.join(d, e)
+            if os.path.exists(p) and "rs-guard" not in open(p, errors="replace").read():
+                print(f"  {p} は別のフックがあるので書きません(手で rs-guard の行を足してください)")
+                continue
+            with open(p, "w") as f:
+                f.write(f"#!/bin/sh\nexec {_hook_cmd(agent, e)}\n")
+            os.chmod(p, 0o755)
+        return d
+    if agent == "windsurf":
+        def f(s):
+            h = s.setdefault("hooks", {})
+            for e in ev:
+                if not _has(h.get(e, []), agent, e):
+                    h.setdefault(e, []).append({"command": _hook_cmd(agent, e), "show_output": False})
+        return _edit_json(os.path.expanduser("~/.codeium/windsurf/hooks.json"), f)
+    raise ValueError(agent)
+
+
+def installed_agents():
+    out = ["claude"]
+    for a, p in INSTALL_PATHS.items():
+        if (p and os.path.isdir(os.path.expanduser(p))) or (a == "copilot" and os.path.isdir(_copilot_home())):
+            out.append(a)
+    return out
+
+
+NOTES = {
+    "codex": "Codex を開いて /hooks で rs-guard のフックを信頼してください(信頼するまで動きません)。確認の画面が無いので、"
+             "普段に無い手は一度止まり、あなたが良いと言った後のやり直しで通ります。",
+    "gemini": "Gemini CLI で /hooks enable-all が要ることがあります。確認の画面が無いので、一度止めて、良いと言った後のやり直しで通します。",
+    "cline": "Cline の設定の Features でフックを有効にしてください。取り消しだけなので、一度止めて、良いと言った後のやり直しで通します。",
+    "windsurf": "止めるだけなので、一度止めて、良いと言った後のやり直しで通します。",
+    "cursor": "ファイルの書き込みは実行前のフックが無いので、書いた後に普段へ入れるだけです(シェル・MCP・読み込みは実行前に見ます)。",
+}
+
+
+def cmd_install(a):
+    targets = installed_agents() if a.target == "all" else [a.target]
+    for t in targets:
+        if t not in agents.EVENTS:
+            sys.exit(f"知らない道具です: {t}(claude / codex / gemini / cursor / copilot / cline / windsurf / all)")
+        p = install_agent(t, a.settings if t == "claude" else None)
+        print(f"{t}: {p} にフックを足しました(元の設定は .rs-guard.bak)")
+        if t in NOTES:
+            print("  " + NOTES[t])
 
 
 # ---- status / explain ----
@@ -395,10 +573,15 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("learn")
     p.add_argument("--projects", default=CLAUDE_PROJECTS)
+    p.add_argument("--codex", default="auto", help="Codex の会話記録の置き場(auto = ~/.codex/sessions)")
     p.set_defaults(f=cmd_learn)
     sub.add_parser("claude-pre").set_defaults(f=cmd_claude_pre)
     sub.add_parser("claude-post").set_defaults(f=cmd_claude_post)
     sub.add_parser("claude-prompt").set_defaults(f=cmd_claude_prompt)
+    p = sub.add_parser("hook")
+    p.add_argument("agent")
+    p.add_argument("event")
+    p.set_defaults(f=cmd_hook)
     p = sub.add_parser("install")
     p.add_argument("target")
     p.add_argument("--settings", default=CLAUDE_SETTINGS)

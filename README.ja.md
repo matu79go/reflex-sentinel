@@ -6,7 +6,7 @@
 
 このリポジトリは実験材料の公開です。コードと、Hugging Face 上の全データへのリンクを置き、下の結果を再現できるようにしています。
 
-> **Claude Code を使っている方へ**: 行動の前に普段と比べて止める見張り [RS guard](guard/README.ja.md)(使い方は下の「RS guard」の節) は、今日から入れて使えます。
+> **Claude Code・Codex・Cursor・Copilot などを使っている方へ**: 行動の前に普段と比べて止める見張り [RS guard](guard/README.ja.md)(使い方は下の「RS guard」の節) は、今日から入れて使えます。
 
 解説記事: [suzuki shoten(概要)](https://suzuki-shoten.dev/jp/projects/reflex-sentinel/) ・ [Zenn(実装の解説)](https://zenn.dev/suzukishoten/articles/577710d2cb0120)
 
@@ -79,11 +79,11 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 **安全のために。** エージェントのコマンドは、モデルが書いたコードです。`nobody` 権限で、問題ごとの作業場の中だけで実行し、コンテナはネットワークを切って起動します(`scripts/run_in_vllm.sh`)。認証情報のある機械では実行しないでください。
 
-## RS guard(Claude Code などのエージェントの見張り。今日から使えます)
+## RS guard(AI エージェントの見張り。Claude Code・Codex・Cursor・Copilot など。今日から使えます)
 
 **AI エージェントがツールを使う直前に、その手があなたの「普段」に無いものなら止めて、確認を求めます。** 普段は、手元にある Claude Code の会話記録から自動で作ります。許可の一覧を書く必要はありません。LLM を呼ばず、外へは何も送りません(1 回 0.1 秒ほど)。
 
-内部状態を読む RS 本体は、自分で動かすモデルが要ります。RS guard は、Claude Code のように中を見られないエージェントでも使えるように、**行動の方**を見張ります。
+内部状態を読む RS 本体は、自分で動かすモデルが要ります。RS guard は、中を見られないエージェントでも使えるように、**行動の方**を見張ります。Claude Code・Codex CLI・Gemini CLI・Cursor・GitHub Copilot(CLI・VS Code)・Cline・Windsurf の実行前のフックにつなぎます。
 
 ### 何を止めるか
 
@@ -109,12 +109,12 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.0.0#subdirectory=guard"
-~/.rs-guard/venv/bin/rs-guard learn            # 手元の会話記録から普段を作る
-~/.rs-guard/venv/bin/rs-guard install claude   # Claude Code にフックを足す(既存の設定は残し、元を保存)
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.0#subdirectory=guard"
+~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
+~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(既存の設定は残し、元を保存)
 ```
 
-あとはいつもどおり Claude Code を使うだけです。`rs-guard status` で確認の回数、`rs-guard explain` で最近の確認とその理由・通したか拒否したかを見られます。外す時は `~/.claude/settings.json.rs-guard.bak` に戻します。
+あとはいつもどおりエージェントを使うだけです。確認の画面が無い道具(Codex・Gemini CLI・Cline・Windsurf)では、一度止めてエージェントが確かめに来るので、良ければ「いいよ」と返事します。道具ごとの注意は [`guard/README.ja.md`](guard/README.ja.md#使える道具) にあります。`rs-guard status` で確認の回数、`rs-guard explain` で最近の確認とその理由・通したか拒否したかを見られます。外す時は `~/.claude/settings.json.rs-guard.bak` に戻します。
 
 判定の仕組み・止められない物(普段の範囲内の悪用など)・置き場とプライバシー・再現の手順は [`guard/README.ja.md`](guard/README.ja.md) にあります。
 
