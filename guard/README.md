@@ -91,7 +91,7 @@ python3 -m venv ~/.rs-guard/venv
 2. Open Codex and **trust** the 3 rs-guard hooks with `/hooks` (they do not run until trusted).
 3. Use Codex as usual. An unusual action stops as a tool error in Codex, with the reason and "Ask the user". Codex then comes back to ask you.
 4. If it is normal work, reply "ok". When Codex runs the same action again it goes through and joins your usual work, so it is not stopped next time. If it looks wrong, just say no (a retry without your reply is still blocked).
-5. What was stopped and what you approved: `~/.rs-guard/venv/bin/rs-guard explain` (shows lines such as `[codex] … → approved after confirming`).
+5. What was stopped and what you approved: `~/.rs-guard/venv/bin/rs-guard explain` (Codex actions are marked `[codex]`, including the ones you approved after a stop).
 
 Example of a stop:
 
