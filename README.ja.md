@@ -114,7 +114,7 @@ python3 -m venv ~/.rs-guard/venv
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(既存の設定は残し、元を保存)
 ```
 
-あとはいつもどおりエージェントを使うだけです。確認の画面が無い道具(Codex・Gemini CLI・Cline・Windsurf)では、一度止めてエージェントが確かめに来るので、良ければ「いいよ」と返事します。道具ごとの注意は [`guard/README.ja.md`](guard/README.ja.md#使える道具) にあります。`rs-guard status` で確認の回数、`rs-guard explain` で最近の確認とその理由・通したか拒否したかを見られます。外す時は `~/.claude/settings.json.rs-guard.bak` に戻します。
+あとはいつもどおりエージェントを使うだけです。確認の画面が無い道具(Codex・Gemini CLI・Cline・Windsurf)では、一度止めてエージェントが確かめに来るので、良ければ「いいよ」と返事します。道具ごとの注意は [`guard/README.ja.md`](guard/README.ja.md#使える道具)、Codex での使い方(信頼の手順・止まった時の返事)は [`guard/README.ja.md`](guard/README.ja.md#codex-での使い方) にあります。`rs-guard status` で確認の回数、`rs-guard explain` で最近の確認とその理由・通したか拒否したかを見られます。外す時は `~/.claude/settings.json.rs-guard.bak` に戻します。
 
 判定の仕組み・止められない物(普段の範囲内の悪用など)・置き場とプライバシー・再現の手順は [`guard/README.ja.md`](guard/README.ja.md) にあります。
 

@@ -198,7 +198,7 @@ python3 -m venv ~/.rs-guard/venv
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (keeps existing settings, saves a backup)
 ```
 
-Then use your agent as usual. Tools without a confirmation prompt (Codex, Gemini CLI, Cline, Windsurf) block once and the agent comes back to ask you; reply "ok" if it is fine. Per-tool notes: [`guard/README.md`](guard/README.md#supported-tools). `rs-guard status` shows how often it asked; `rs-guard explain` shows recent confirmations, why, and whether you approved. To remove it, restore `~/.claude/settings.json.rs-guard.bak`.
+Then use your agent as usual. Tools without a confirmation prompt (Codex, Gemini CLI, Cline, Windsurf) block once and the agent comes back to ask you; reply "ok" if it is fine. Per-tool notes: [`guard/README.md`](guard/README.md#supported-tools); step-by-step for Codex (trusting the hooks, replying when it stops): [`guard/README.md`](guard/README.md#using-it-with-codex). `rs-guard status` shows how often it asked; `rs-guard explain` shows recent confirmations, why, and whether you approved. To remove it, restore `~/.claude/settings.json.rs-guard.bak`.
 
 How it decides, what it cannot stop (abuse inside your usual work, …), files and privacy, and how to reproduce: [`guard/README.md`](guard/README.md).
 

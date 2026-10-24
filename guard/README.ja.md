@@ -83,6 +83,20 @@ python3 -m venv ~/.rs-guard/venv
 | Cline | `~/Documents/Cline/Rules/Hooks/`(PreToolUse ほか) | 一度止める → 同上 | 資料の形の入力で試験 |
 | Windsurf | `~/.codeium/windsurf/hooks.json`(pre_run_command ほか) | 一度止める → 同上 | 資料の形の入力で試験 |
 
+### Codex での使い方
+
+1. 入れる: `~/.rs-guard/venv/bin/rs-guard install codex`(`~/.codex/hooks.json` にフックが 3 つ入ります)。
+2. Codex を開き、`/hooks` で rs-guard のフック 3 つを**信頼**する(信頼するまで動きません)。
+3. あとはいつもどおり使います。普段に無い手は、Codex の画面にツールのエラーとして止まり、理由と「利用者に確かめて」が出ます。Codex があなたに確かめに来ます。
+4. 普通の仕事なら「いいよ」と返事します。Codex が同じ手をもう一度実行すると通り、普段に加わって次からは止まりません。怪しければ、そのまま断ってください(あなたの返事が無いまま Codex がやり直しても通りません)。
+5. 何が止まり、何を通したか: `~/.rs-guard/venv/bin/rs-guard explain`(`[codex] … → 確かめて通した` のように出ます)。
+
+止まった時の画面の例:
+
+```
+RS: first time using the send / delete / config command shred. (Ask the user. If they approve, run the same action again and it will go through.)
+```
+
 - **確認の画面が無い道具**(Codex・Gemini CLI・Cline・Windsurf)では、普段に無い手を一度止め、エージェントに「利用者に確かめて」と伝えます。あなたが返事をした後に同じ手が来たら通し、普段に加えます。あなたの発言をはさまないやり直しは通しません。
 - Codex は、入れた後に Codex の中で `/hooks` から rs-guard のフックを信頼するまで動きません。Gemini CLI は `/hooks enable-all` が要ることがあります。Cline は設定の Features でフックを有効にします。
 - Cursor は、ファイルの書き込みに実行前のフックが無いため、書いた後に普段へ入れるだけです(シェル・MCP・読み込みは実行前に見ます)。
