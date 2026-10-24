@@ -700,3 +700,17 @@ def test_explain_shows_confirmed_retry(rshome, capsys):
     cli.main(["explain", "-n", "5"])
     out = capsys.readouterr().out
     assert "→ 拒否" in out and "→ 確かめて通した" in out and "[codex]" in out
+
+
+def test_explain_marks_approved_for_all_actions(tmp_path, rshome, capsys):
+    """確認のあと実行された手(Bash などすべて)は「通した」と出る(MCP・Web だけを数えていた、10-24 の振り返りの準備で発見)。"""
+    tp = write(tmp_path / "now.jsonl", [human("片付けて")])
+    inp = {"session_id": "now", "transcript_path": tp, "tool_name": "Bash", "tool_input": {"command": "shred -u a"},
+           "tool_use_id": "b1"}
+    assert cli.pre(inp) is not None
+    cli.post({**inp, "tool_response": {"stdout": ""}})
+    cli.pre({**inp, "tool_input": {"command": "shred -u b; crontab -r"}, "tool_use_id": "b2"})  # こちらは実行されない
+    cli.main(["explain", "-n", "5"])
+    out = capsys.readouterr().out.split("\n2026")
+    assert "→ 通した" in out[0] and "→ 拒否" in out[1]
+    assert "shred -u a" not in (rshome / "done.jsonl").read_text()  # 残すのは手の番号だけ

@@ -66,7 +66,7 @@ Codex の会話記録 15 本(9 日、手 2,579 回)を同じように流すと�
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.1#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.2#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(1 つだけなら install codex など)
 ```
@@ -147,6 +147,7 @@ RS: first time using the send / delete / config command shred. (Ask the user. If
 | `~/.rs-guard/normal.jsonl` | 普段(MCP・Web): 依頼の文、使った手の名前、引数名、出どころの区分。**値そのもの(宛先・本文)は残さない** |
 | `~/.rs-guard/seen.jsonl` | 普段(すべての手): 使ったコマンドの名前、出どころの区分、送り先・秘密・パッケージの**ハッシュ**(この機械だけの乱数 `salt` を混ぜる。名前そのものは残さない) |
 | `~/.rs-guard/decisions.jsonl` | 判定の記録(何を、なぜ確認したか) |
+| `~/.rs-guard/done.jsonl` | 確認のあと実行された手の番号だけ(通したか拒否したかを `explain` で出すため) |
 | `~/.rs-guard/sessions/` | 会話ごとの覚え書き(あなたの発言とツールの結果)。Claude Code の会話記録は遅れて書かれることがあるため、直前の結果を見落とさないように残す。7 日で消す |
 
 すべて権限 600 で、外へは何も送りません。

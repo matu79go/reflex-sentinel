@@ -68,7 +68,7 @@ Replaying 15 Codex logs the same way (9 days, 2,579 actions) gave 12 confirmatio
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.1#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.2#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (or: install codex, …)
 ```
@@ -149,6 +149,7 @@ To block instead of asking for some signals, set e.g. `"deny_rules": ["R3", "R7"
 | `~/.rs-guard/normal.jsonl` | Usual work (MCP / web): request text, tool names, argument names, source categories. **Values themselves (recipients, bodies) are not stored** |
 | `~/.rs-guard/seen.jsonl` | Usual work (all actions): command names, source categories, and **hashes** of destinations, secrets and packages (mixed with a per-machine random `salt`; the names themselves are not stored) |
 | `~/.rs-guard/decisions.jsonl` | Decision log (what was asked and why) |
+| `~/.rs-guard/done.jsonl` | Only the IDs of actions that ran after a confirmation (so `explain` can show approved / rejected) |
 | `~/.rs-guard/sessions/` | Per-conversation notes (your messages and tool results). Claude Code writes its log asynchronously, so these keep the latest result from being missed. Deleted after 7 days |
 
 All files are mode 600. Nothing is sent anywhere.

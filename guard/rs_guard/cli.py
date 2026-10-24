@@ -321,6 +321,8 @@ def post(inp, cfg=None):
     _append("seen.jsonl", st.learned(seen))  # 実行された手 = 普段(すべての手)に加える
     _note(session, {"k": "act", "sigs": [list(s) for s in st.sig | set(st.web)], "sens": st.sens})
     _note(session, _result_note(tool, inp))
+    if inp.get("tool_use_id") and inp["tool_use_id"] in _asked_ids():
+        _append("done.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "id": inp["tool_use_id"]}])  # 確認のあと通した
     if not core.is_acting(tool, cfg["extra_tools"]):
         return None
     if not req:
@@ -329,6 +331,31 @@ def post(inp, cfg=None):
     r["id"] = inp.get("tool_use_id")  # 確認のあと通したかを、判定の記録と突き合わせるため
     _append("normal.jsonl", [r])
     return r
+
+
+def _asked_ids(tail=200_000):
+    """最近の判定の記録で、確認を求めた手の番号(記録の末尾だけ読む)。"""
+    p = _path("decisions.jsonl")
+    if not os.path.exists(p):
+        return set()
+    start = max(0, os.path.getsize(p) - tail)
+    with open(p, "rb") as f:
+        f.seek(start)
+        lines = f.read().decode("utf-8", errors="replace").splitlines()[1 if start else 0:]  # 途中から読んだ時だけ最初の行を捨てる
+    out = set()
+    for l in lines:
+        try:
+            d = json.loads(l)
+        except ValueError:
+            continue
+        if d.get("ok") is False and d.get("id"):
+            out.add(d["id"])
+    return out
+
+
+def approved_ids():
+    """確認のあと実行された手の番号(すべての手 = done.jsonl、MCP・Web = 普段の行の id)。"""
+    return {r.get("id") for r in _read_rows("normal.jsonl") + _read_rows("done.jsonl") if r.get("id")}
 
 
 def prompt(inp):
@@ -560,7 +587,7 @@ def cmd_status(a):
 def cmd_explain(a):
     """最近の確認と理由、そのあと通したか(実行後のフックが来て普段に入った)・拒否したか。"""
     ds = [d for d in _read_rows("decisions.jsonl") if d.get("ok") is False or "confirmed" in (d.get("rules") or [])]
-    done = {r.get("id") for r in _read_rows("normal.jsonl") if r.get("id")}
+    done = approved_ids()
     for d in ds[-a.n:]:
         if d.get("ok"):
             what = "→ 確かめて通した(利用者が良いと言った後のやり直し)"
