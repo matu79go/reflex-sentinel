@@ -66,7 +66,7 @@ Codex の会話記録 15 本(9 日、手 2,579 回)を同じように流すと�
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.0#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.1#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(1 つだけなら install codex など)
 ```
@@ -76,7 +76,7 @@ python3 -m venv ~/.rs-guard/venv
 | 道具 | つなぐ所 | 普段に無い手の時 | 確かめたこと |
 |---|---|---|---|
 | Claude Code | `~/.claude/settings.json`(PreToolUse ほか) | 確認の画面 | 実物で動作 |
-| Codex CLI | `~/.codex/hooks.json`(PreToolUse ほか) | 一度止める → 良いと言った後のやり直しで通る | 会話記録から普段を作れる・資料の形の入力で試験 |
+| Codex CLI | `~/.codex/hooks.json`(PreToolUse ほか) | 一度止める → 良いと言った後のやり直しで通る | 実物で動作(初めての削除・送り先・パッケージで止まり、良いと言った後のやり直しで通る。会話記録から普段も作る) |
 | Gemini CLI | `~/.gemini/settings.json`(BeforeTool ほか) | 一度止める → 同上 | 資料の形の入力で試験 |
 | Cursor | `~/.cursor/hooks.json`(beforeShellExecution・beforeMCPExecution・beforeReadFile ほか) | 確認の画面 | 資料の形の入力で試験 |
 | GitHub Copilot(CLI・VS Code) | `~/.copilot/hooks/rs-guard.json`(preToolUse ほか) | 確認の画面 | 資料の形の入力で試験 |

@@ -68,7 +68,7 @@ Replaying 15 Codex logs the same way (9 days, 2,579 actions) gave 12 confirmatio
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.0#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.1#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (or: install codex, …)
 ```
@@ -78,7 +78,7 @@ python3 -m venv ~/.rs-guard/venv
 | Tool | Hooked via | On an unusual action | Verified |
 |---|---|---|---|
 | Claude Code | `~/.claude/settings.json` (PreToolUse, …) | confirmation prompt | runs on the real app |
-| Codex CLI | `~/.codex/hooks.json` (PreToolUse, …) | blocks once → goes through when retried after you approve | usual work built from its logs; tested with documented inputs |
+| Codex CLI | `~/.codex/hooks.json` (PreToolUse, …) | blocks once → goes through when retried after you approve | runs on the real app (stops a first-time delete, destination and package; goes through when retried after you approve; usual work built from its logs) |
 | Gemini CLI | `~/.gemini/settings.json` (BeforeTool, …) | blocks once → same | tested with documented inputs |
 | Cursor | `~/.cursor/hooks.json` (beforeShellExecution, beforeMCPExecution, beforeReadFile, …) | confirmation prompt | tested with documented inputs |
 | GitHub Copilot (CLI, VS Code) | `~/.copilot/hooks/rs-guard.json` (preToolUse, …) | confirmation prompt | tested with documented inputs |

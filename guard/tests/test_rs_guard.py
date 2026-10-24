@@ -689,3 +689,14 @@ def test_learn_reads_codex_logs(tmp_path, rshome):
     cli.main(["learn", "--projects", str(tmp_path / "none"), "--codex", str(tmp_path / "codex")])
     seen = cli.load_seen()
     assert acts.dest_key("srv7", seen.salt) in seen.dests
+
+
+def test_explain_shows_confirmed_retry(rshome, capsys):
+    """確認の画面が無い道具で、利用者が良いと言った後に通した手も explain に出る(Codex の実物での試用の指摘、10-24)。"""
+    inp = {**agents.normalize("codex", "PreToolUse", PRE["codex"][1])[1][0], "_agent": "codex"}
+    cli.judge(inp, retry=True)
+    cli.prompt({"session_id": "s", "prompt": "いいよ"})
+    cli.judge(inp, retry=True)
+    cli.main(["explain", "-n", "5"])
+    out = capsys.readouterr().out
+    assert "→ 拒否" in out and "→ 確かめて通した" in out and "[codex]" in out

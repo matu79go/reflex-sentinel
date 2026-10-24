@@ -559,11 +559,15 @@ def cmd_status(a):
 
 def cmd_explain(a):
     """最近の確認と理由、そのあと通したか(実行後のフックが来て普段に入った)・拒否したか。"""
-    ds = [d for d in _read_rows("decisions.jsonl") if d.get("ok") is False]
+    ds = [d for d in _read_rows("decisions.jsonl") if d.get("ok") is False or "confirmed" in (d.get("rules") or [])]
     done = {r.get("id") for r in _read_rows("normal.jsonl") if r.get("id")}
     for d in ds[-a.n:]:
-        what = "→ 通した" if d.get("id") in done else "→ 拒否(または未実行)"
-        print(f"{d['ts']}  {d['tool']}  {what}\n    {d['reason']}\n    依頼: {d['req']}")
+        if d.get("ok"):
+            what = "→ 確かめて通した(利用者が良いと言った後のやり直し)"
+        else:
+            what = "→ 通した" if d.get("id") in done else "→ 拒否(または未実行)"
+        tag = f"[{d['agent']}]  " if d.get("agent") and d["agent"] != "claude" else ""
+        print(f"{d['ts']}  {tag}{d['tool']}  {what}\n    {d['reason']}\n    依頼: {d['req']}")
     if not ds:
         print("確認を求めた記録はまだありません")
 

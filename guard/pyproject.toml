@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rs-guard"
-version = "1.1.0"
+version = "1.1.1"
 description = "Right before an AI agent uses a tool, compare the request and the action with your usual work, and ask before unusual actions"
 readme = "README.md"
 license = {text = "Apache-2.0"}
