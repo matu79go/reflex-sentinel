@@ -45,7 +45,7 @@ python3 -m venv ~/.rs-guard/venv
 
 - `install` は既存のフックを残し、元の設定を `~/.claude/settings.json.rs-guard.bak` に保存します。外す時はこれに戻すか、`hooks` の rs-guard の 3 行を消します。
 - 確認の回数と理由: `rs-guard status` / `rs-guard explain`。
-- 理由の文は `LANG` に合わせて日本語か英語です(`RS_GUARD_LANG=ja` / `en` で固定)。
+- 理由の文は `LANG` に合わせて日本語か英語です(`~/.rs-guard/config.json` の `"lang": "ja"` か `RS_GUARD_LANG` で固定)。
 - 依存するパッケージはありません(Python 3.9 以上)。
 
 ## 判定の流れ

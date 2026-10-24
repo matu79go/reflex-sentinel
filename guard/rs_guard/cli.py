@@ -38,6 +38,8 @@ def config():
             c = json.load(f)
     except (OSError, ValueError):
         c = {}
+    if c.get("lang"):
+        os.environ.setdefault("RS_GUARD_LANG", str(c["lang"]))  # 理由の文の言葉(ja / en)。環境変数が先
     return {"min_sim": float(c.get("min_sim", 0.2)), "extra_tools": set(c.get("extra_tools", []))}
 
 
@@ -192,7 +194,8 @@ def pre(inp, normal=None, cfg=None):
     session = _session_of(inp)
     ok, reason = core.decide(normal, tool, args, req, user_text, outputs, cfg["min_sim"], cfg["extra_tools"], session)
     _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "session": inp.get("session_id"),
-                                 "tool": core.short_name(tool), "ok": ok, "reason": reason, "req": req[:80]}])
+                                 "id": inp.get("tool_use_id"), "tool": core.short_name(tool), "ok": ok, "reason": reason,
+                                 "req": req[:80]}])
     if ok:
         return None
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask",
@@ -212,6 +215,7 @@ def post(inp, cfg=None):
     if not req:
         return None
     r = _row(session, tool, args, req, user_text, outputs)
+    r["id"] = inp.get("tool_use_id")  # 確認のあと通したかを、判定の記録と突き合わせるため
     _append("normal.jsonl", [r])
     return r
 
@@ -305,9 +309,12 @@ def cmd_status(a):
 
 
 def cmd_explain(a):
+    """最近の確認と理由、そのあと通したか(実行後のフックが来て普段に入った)・拒否したか。"""
     ds = [d for d in _read_rows("decisions.jsonl") if d.get("ok") is False]
+    done = {r.get("id") for r in _read_rows("normal.jsonl") if r.get("id")}
     for d in ds[-a.n:]:
-        print(f"{d['ts']}  {d['tool']}  {d['reason']}\n    依頼: {d['req']}")
+        what = "→ 通した" if d.get("id") in done else "→ 拒否(または未実行)"
+        print(f"{d['ts']}  {d['tool']}  {what}\n    {d['reason']}\n    依頼: {d['req']}")
     if not ds:
         print("確認を求めた記録はまだありません")
 

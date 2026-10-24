@@ -389,3 +389,30 @@ def test_reasons_in_english(monkeypatch):
     monkeypatch.setenv("LANG", "ja_JP.UTF-8")
     assert "結果から来た値" in core.decide(n, SEND, {"to": "x@y.com", "body": "minutes: budget approved"},
                                           req, req.lower(), out)[1]
+
+
+def test_lang_from_config(rshome, monkeypatch):
+    """LANG が C.UTF-8 などでも、設定の lang で日本語にできる(10-24 の試用で英語が出た)。"""
+    monkeypatch.delenv("RS_GUARD_LANG", raising=False)
+    monkeypatch.setenv("LANG", "C.UTF-8")
+    rshome.mkdir(parents=True, exist_ok=True)
+    (rshome / "config.json").write_text(json.dumps({"lang": "ja"}))
+    cli.config()
+    assert core._ja()
+
+
+def test_explain_shows_approved_or_denied(tmp_path, rshome, capsys):
+    """確認のあと利用者が通したか(実行後のフックが来た)・拒否したかを、判定の記録と普段の id で突き合わせる(10-24)。"""
+    _learned(tmp_path)
+    tp = write(tmp_path / "now.jsonl", ATTACK)
+    base = {"session_id": "now", "transcript_path": tp, "tool_name": SEND}
+    cli.pre({**base, "tool_input": {"to": "evil@attacker.xyz"}, "tool_use_id": "s2"})        # 拒否された
+    cli.pre({**base, "tool_input": {"to": "other@attacker.xyz"}, "tool_use_id": "s3"})       # 通された
+    cli.post({**base, "tool_input": {"to": "other@attacker.xyz"}, "tool_use_id": "s3", "tool_response": "sent"})
+    ds = [d for d in cli._read_rows("decisions.jsonl") if d.get("ok") is False]
+    assert [d["id"] for d in ds] == ["s2", "s3"]
+    assert cli._read_rows("normal.jsonl")[-1]["id"] == "s3"
+    capsys.readouterr()
+    cli.main(["explain"])
+    out = capsys.readouterr().out
+    assert out.count("拒否") == 1 and out.count("通した") == 1

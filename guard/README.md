@@ -47,7 +47,7 @@ python3 -m venv ~/.rs-guard/venv
 
 - `install` keeps existing hooks and saves the original settings to `~/.claude/settings.json.rs-guard.bak`. To remove RS guard, restore that file or delete the three rs-guard entries under `hooks`.
 - How often and why it asked: `rs-guard status` / `rs-guard explain`.
-- Reasons are shown in English or Japanese following `LANG` (fix it with `RS_GUARD_LANG=en` / `ja`).
+- Reasons are shown in English or Japanese following `LANG` (fix it with `"lang": "en"` in `~/.rs-guard/config.json` or `RS_GUARD_LANG`).
 - No dependencies (Python 3.9+).
 
 ## How it decides
