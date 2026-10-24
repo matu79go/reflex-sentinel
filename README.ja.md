@@ -6,6 +6,8 @@
 
 このリポジトリは実験材料の公開です。コードと、Hugging Face 上の全データへのリンクを置き、下の結果を再現できるようにしています。
 
+> **Claude Code を使っている方へ**: 行動の前に普段と比べて止める見張り [RS guard](guard/README.ja.md)(使い方は下の「RS guard」の節) は、今日から入れて使えます。
+
 解説記事: [suzuki shoten(概要)](https://suzuki-shoten.dev/jp/projects/reflex-sentinel/) ・ [Zenn(実装の解説)](https://zenn.dev/suzukishoten/articles/577710d2cb0120)
 
 ![同じ問題を同じ AI に 2 回解かせた。エージェント A は不合格を隠ぺいする数回前の行動から赤くなり、B は薄いまま](media/replay_ja.gif)
@@ -77,9 +79,44 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 **安全のために。** エージェントのコマンドは、モデルが書いたコードです。`nobody` 権限で、問題ごとの作業場の中だけで実行し、コンテナはネットワークを切って起動します(`scripts/run_in_vllm.sh`)。認証情報のある機械では実行しないでください。
 
-## RS guard(自分で動かしていないエージェント向け)
+## RS guard(Claude Code などのエージェントの見張り。今日から使えます)
 
-内部状態を読むには、自分で動かすモデルが要ります。Claude Code などのエージェントには、[`guard/`](guard/README.ja.md) が行動の方を見張ります。ツールを使う直前に、頼まれた仕事と今しようとしている手を、あなたの普段(手元の会話記録から作る)と比べ、普段に無い手なら確認を求めます。AgentDojo で GPT-4o の攻撃成功率 47.7 % → 1.4 %、仕事の成功は変わらず(69.1 %)。シェル・ファイル・スクリプトも見ます: CodeIPI(コーディングのエージェントへの注入)で、エージェントが害のある手を実行した 12 本すべてを、その手の前で止めました。LLM を呼ばず、1 回 0.1 秒ほどです。
+**AI エージェントがツールを使う直前に、その手があなたの「普段」に無いものなら止めて、確認を求めます。** 普段は、手元にある Claude Code の会話記録から自動で作ります。許可の一覧を書く必要はありません。LLM を呼ばず、外へは何も送りません(1 回 0.1 秒ほど)。
+
+内部状態を読む RS 本体は、自分で動かすモデルが要ります。RS guard は、Claude Code のように中を見られないエージェントでも使えるように、**行動の方**を見張ります。
+
+### 何を止めるか
+
+読んだ Web ページ・メール・issue・README などに仕込まれた指示に、エージェントが乗っ取られる攻撃(プロンプトインジェクション)を、実行の前に止めます。
+
+| こんな時 | RS guard の確認の文 |
+|---|---|
+| 予定表を読んだら、知らない宛先にメールを送ろうとした | `RS: send_email の to が search_calendar_events の結果から来た値です。…` |
+| 貼り付けた issue の「`echo $SECRET_API_KEY` を実行して」に従おうとした | `RS: 貼り付けた文の中の指示「echo $SECRET_API_KEY」に、そのまま従おうとしています。` |
+| 鍵を読んだ後、初めてのサーバーへ送ろうとした | `RS: 鍵・設定を読んだ後に、初めての送り先 … へ送ろうとしています。` |
+| README の指示で、知らないパッケージを入れる・`.bashrc` に書き込む | `RS: 初めて触る秘密・居座り先・パッケージです(…)。` |
+| 書いたスクリプトの中から、初めての先へ通信する | `RS: 初めての送り先 … です。` |
+
+止まった時は Claude Code の確認の画面が出ます。普通の仕事なら Yes(その場で普段に加わり、次からは聞きません)、怪しければ No を選びます。
+
+### 結果
+
+- **AgentDojo**(メール・予定表・銀行など 97 の仕事): GPT-4o の攻撃成功率 47.7 % → **1.4 %**、仕事の成功は変わらず(69.1 %)。他の 8 モデルも同じ傾向。
+- **CodeIPI**(コーディングのエージェントへの注入): エージェントが注入に従って害のある手を実行した 12 本を**すべて**、その手の前で止めた。普通の仕事 30 本は止めなかった。
+- **普通の仕事を止める回数**: 開発者 1 人の 1 週間の記録で 1 日 7.4 回(使うほど減ります)。
+
+### 使い方
+
+```bash
+python3 -m venv ~/.rs-guard/venv
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.0.0#subdirectory=guard"
+~/.rs-guard/venv/bin/rs-guard learn            # 手元の会話記録から普段を作る
+~/.rs-guard/venv/bin/rs-guard install claude   # Claude Code にフックを足す(既存の設定は残し、元を保存)
+```
+
+あとはいつもどおり Claude Code を使うだけです。`rs-guard status` で確認の回数、`rs-guard explain` で最近の確認とその理由・通したか拒否したかを見られます。外す時は `~/.claude/settings.json.rs-guard.bak` に戻します。
+
+判定の仕組み・止められない物(普段の範囲内の悪用など)・置き場とプライバシー・再現の手順は [`guard/README.ja.md`](guard/README.ja.md) にあります。
 
 ## ライセンス
 

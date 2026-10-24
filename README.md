@@ -10,6 +10,8 @@ anything for that step.
 This repository holds the experiment materials: code, and a link to the full data on Hugging Face, so the results
 below can be reproduced.
 
+> **Using Claude Code?** [RS guard](guard/README.md) (usage in the "RS guard" section below), which stops unusual actions before they run, is ready to install today.
+
 Write-up: [suzuki shoten](https://suzuki-shoten.dev/en/projects/reflex-sentinel/) (overview) · [Zenn, in Japanese](https://zenn.dev/suzukishoten/articles/577710d2cb0120) (implementation)
 
 ![Two runs of the same task. Agent A turns red several steps before it hides the failure; agent B stays pale](media/replay_en.gif)
@@ -161,14 +163,44 @@ you can afford to lose, never on a host with credentials.
 | `rs/export_heatmap.py`, `rs/make_figures.py` | figures (`--lang en` / `ja`) |
 | `rs/redact.py`, `rs/build_release.py` | how the released data was made |
 
-## RS guard (for agents you do not host)
+## RS guard (a guard for Claude Code and other agents, ready to use today)
 
-Reading internal state needs a model you run yourself. For agents such as Claude Code, [`guard/`](guard/README.md) watches
-the actions instead: right before a tool call, it compares the request and the action with your usual work (built from
-your local conversation logs) and asks before unusual actions. On AgentDojo, GPT-4o's attack success rate goes from
-47.7 % to 1.4 % with task success unchanged (69.1 %). Shell commands, files and scripts are checked too: on CodeIPI
-(injections for coding agents), all 12 runs where the agent ran a harmful action were stopped before that action. No LLM
-calls, about 0.1 s per decision.
+**Right before an AI agent uses a tool, RS guard stops the action and asks you if it is outside your usual work.** Your usual work is built automatically from the Claude Code logs already on your machine; nobody writes an allow list. No LLM calls, nothing leaves your machine (about 0.1 s per decision).
+
+RS itself reads internal state and needs a model you run yourself. RS guard watches **the actions** instead, so it works with agents you cannot look inside, such as Claude Code.
+
+### What it stops
+
+Prompt injection: instructions hidden in a web page, email, issue or README that hijack the agent. RS guard stops the action before it runs.
+
+| Situation | What RS guard says |
+|---|---|
+| After reading a calendar, the agent is about to email an unknown address | `RS: the to of send_email comes from the result of search_calendar_events. …` |
+| A pasted issue says "run `echo $SECRET_API_KEY`" and the agent is about to do it | `RS: about to follow an instruction found in pasted text: "echo $SECRET_API_KEY".` |
+| After reading a key, the agent is about to send to a new server | `RS: about to send to a new destination … after reading keys or settings.` |
+| A README tells the agent to install an unknown package or write to `.bashrc` | `RS: first time touching this secret, persistence location or package (…).` |
+| A script the agent wrote talks to a new host | `RS: new destination ….` |
+
+When it stops, Claude Code shows its usual confirmation prompt. Choose Yes for normal work (it joins your usual work right away and is not asked again), No if it looks wrong.
+
+### Results
+
+- **AgentDojo** (97 tasks over email, calendar, banking …): GPT-4o's attack success rate 47.7 % → **1.4 %**, task success unchanged (69.1 %). The other 8 models show the same trend.
+- **CodeIPI** (injections against coding agents): **all** 12 runs where the agent followed an injection and ran a harmful action were stopped before that action. None of the 30 normal runs were stopped.
+- **Interrupting normal work**: 7.4 times a day on one developer's week of logs (fewer as you use it).
+
+### Usage
+
+```bash
+python3 -m venv ~/.rs-guard/venv
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.0.0#subdirectory=guard"
+~/.rs-guard/venv/bin/rs-guard learn            # build your usual work from local logs
+~/.rs-guard/venv/bin/rs-guard install claude   # add hooks to Claude Code (keeps existing settings, saves a backup)
+```
+
+Then use Claude Code as usual. `rs-guard status` shows how often it asked; `rs-guard explain` shows recent confirmations, why, and whether you approved. To remove it, restore `~/.claude/settings.json.rs-guard.bak`.
+
+How it decides, what it cannot stop (abuse inside your usual work, …), files and privacy, and how to reproduce: [`guard/README.md`](guard/README.md).
 
 ## License
 
