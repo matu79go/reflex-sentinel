@@ -16,7 +16,9 @@ RE_LONG = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{8,30}\b|\b[A-Za-z0-9]{16,}\b")
 RE_WORD = re.compile(r"[a-z]{3,}|[぀-ヿ一-鿿]{2,}")
 # 外に作用する手 = ツール名(mcp__<サーバー>__ の後ろ)の動詞で決める + Web を開く手
 WRITE_VERB = re.compile(r"^(send|create|update|delete|invite|add|remove|post|reserve|schedule|share|append|reschedule|cancel|"
-                        r"reply|forward|move|upload|publish|write|edit|set|transfer|pay|book|comment|merge|close|trash)(_|$)")
+                        r"reply|forward|move|upload|publish|write|edit|set|transfer|pay|book|comment|merge|close|trash|"
+                        r"batch|copy|insert|respond|label|unlabel|clear|apply|mark|unmark|untrash|submit|approve|assign|"
+                        r"archive|rename|import|accept|decline|run|execute|deploy|push|restore|duplicate|grant|revoke)(_|$)")
 WEB_TOOLS = {"WebFetch", "get_webpage"}
 SEARCH_TOOLS = {"WebSearch"}
 # Web を開く手で、そのまま通す出どころ(依頼・検索の結果・モデル自身が書いた URL。仕込まれた値はツールの結果に出る)
@@ -53,7 +55,7 @@ def short_name(tool):
 
 def is_acting(tool, extra=()):
     """判定の対象(外に作用する手)か。シェル・ファイルの書き込みは v1.0 では対象外(既存の guard と並べて使う)。"""
-    if tool in extra or tool in WEB_TOOLS:
+    if tool in extra or tool in WEB_TOOLS or tool in SEARCH_TOOLS:
         return True
     return tool.startswith("mcp__") and bool(WRITE_VERB.match(short_name(tool)))
 
@@ -100,10 +102,26 @@ def web_provenance(args, user_text, outputs):
     return {"url": [src or "new"]}
 
 
+def search_provenance(args, user_text, outputs):
+    """Web の検索 → {"query": [出どころ]}。見るのはメール・URL・長い英数字だけ(読んだ中身の言葉で検索するのは普通の調べ物。
+    外へ出て困るのは宛先・ID・鍵のような値)。"""
+    q = str(args.get("query") or "")
+    found = [a.lower() for a in RE_EMAIL.findall(q) + RE_URL.findall(q) + RE_LONG.findall(q)]
+    ps = []
+    for a in found:
+        if a in user_text:
+            ps.append("user")
+        else:
+            ps.append(next(("tool:" + short_name(t) for t, o in reversed(outputs) if a in o), "new"))
+    return {"query": ps} if ps else {}
+
+
 def provenance(args, user_text, outputs, tool=""):
     """{引数名: [出どころ]}。user = 依頼に出ている / tool:<名前> = そのツールの結果(新しい方から)/ new = どこにも無い。"""
     if tool in WEB_TOOLS:
         return web_provenance(args or {}, user_text, outputs)
+    if tool in SEARCH_TOOLS:
+        return search_provenance(args or {}, user_text, outputs)
     res = {}
     for k, v in (args or {}).items():
         ps = []
@@ -171,7 +189,7 @@ def decide(normal, tool, args, req, user_text, outputs, min_sim=0.2, extra=(), s
     vals = [p for ps in prov.values() for p in ps]
     if vals and all(p == "user" for p in vals):
         return True, ""  # 値がすべて依頼から来ている = 利用者の指示そのもの
-    if tool in WEB_TOOLS and all(p in WEB_OK for p in vals):
+    if (tool in WEB_TOOLS or tool in SEARCH_TOOLS) and all(p in WEB_OK for p in vals):
         return True, ""
     sig = signature(tool, prov)
     if session and sig and all(x in normal.session_sigs.get(session, ()) for x in sig):

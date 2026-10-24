@@ -24,6 +24,11 @@ def is_human(d):
     return False
 
 
+def is_paste(d, blocks):
+    return (d.get("type") == "user" and not d.get("isMeta") and "<pasted_content" in _text((d.get("message") or {}).get("content"))
+            and not any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks))
+
+
 TAIL_BYTES = 4_000_000  # 実行前の判定で読む会話記録の末尾(大きな会話でも速く。前の発言は会話ごとの覚え書きで補う)
 
 
@@ -42,7 +47,8 @@ def _lines(path, tail=None):
 
 
 def events(path, tail=None):
-    """会話記録 → 順に ("human", 文) / ("call", id, ツール名, 入力) / ("result", id, ツール名, 結果の文, 失敗か)。"""
+    """会話記録 → 順に ("human", 文) / ("call", id, ツール名, 入力) / ("result", id, ツール名, 結果の文, 失敗か) /
+    ("paste", 文)(貼り付けだけの発言。「<」で始まるので利用者の発言には入れない)。"""
     names = {}
     for line in _lines(path, tail):
         try:
@@ -56,6 +62,9 @@ def events(path, tail=None):
             yield ("human", _text(msg.get("content")))
             continue
         blocks = msg.get("content") if isinstance(msg.get("content"), list) else []
+        if is_paste(d, blocks):
+            yield ("paste", _text(msg.get("content")))
+            continue
         for b in blocks:
             if not isinstance(b, dict):
                 continue
@@ -74,12 +83,15 @@ def request_of(humans):
     return "\n".join(humans[-REQ_TURNS:])
 
 
-def history(path, upto_id=None, tail=None):
-    """→ (利用者の発言の並び, それまでのツールの結果 [(名前, 文)])。upto_id の呼び出しの所で止める。tail = 末尾だけ読む。"""
+def history(path, upto_id=None, tail=None, pastes=None):
+    """→ (利用者の発言の並び, それまでのツールの結果 [(名前, 文)])。upto_id の呼び出しの所で止める。tail = 末尾だけ読む。
+    pastes にリストを渡すと、貼り付けだけの発言をそこに足す。"""
     humans, outputs = [], []
     for e in events(path, tail):
         if e[0] == "human":
             humans.append(e[1])
+        elif e[0] == "paste" and pastes is not None:
+            pastes.append(e[1])
         elif e[0] == "result":
             outputs.append((e[2], e[3].lower()))
         elif e[0] == "call" and upto_id and e[1] == upto_id:

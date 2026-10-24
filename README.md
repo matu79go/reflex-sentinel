@@ -166,7 +166,9 @@ you can afford to lose, never on a host with credentials.
 Reading internal state needs a model you run yourself. For agents such as Claude Code, [`guard/`](guard/README.md) watches
 the actions instead: right before a tool call, it compares the request and the action with your usual work (built from
 your local conversation logs) and asks before unusual actions. On AgentDojo, GPT-4o's attack success rate goes from
-47.7 % to 1.4 % with task success unchanged (69.1 %). No LLM calls, 50–60 ms per decision.
+47.7 % to 1.4 % with task success unchanged (69.1 %). Shell commands, files and scripts are checked too: on CodeIPI
+(injections for coding agents), all 12 runs where the agent ran a harmful action were stopped before that action. No LLM
+calls, about 0.1 s per decision.
 
 ## License
 

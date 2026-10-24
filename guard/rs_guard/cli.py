@@ -7,16 +7,18 @@
   rs-guard install claude   ~/.claude/settings.json に 3 つのフックを足す(既存のフックは残す)
   rs-guard status / explain 普段の件数 / 最近の確認とその理由
 
-置き場は ~/.rs-guard/(環境変数 RS_GUARD_HOME で変えられる)。値そのもの(宛先・本文)は残さない。
+判定 = core.decide(MCP と Web の手を似た過去の依頼と比べる)+ acts(すべての手。シェル・ファイル・スクリプトを含む)。
+置き場は ~/.rs-guard/(環境変数 RS_GUARD_HOME で変えられる)。値そのもの(宛先・本文)は残さない(送り先はハッシュ)。
 """
 import argparse
 import glob
+import secrets
 import json
 import os
 import sys
 import time
 
-from . import claude, core
+from . import acts, claude, core
 
 CLAUDE_PROJECTS = os.path.expanduser("~/.claude/projects")
 CLAUDE_SETTINGS = os.path.expanduser("~/.claude/settings.json")
@@ -40,7 +42,22 @@ def config():
         c = {}
     if c.get("lang"):
         os.environ.setdefault("RS_GUARD_LANG", str(c["lang"]))  # 理由の文の言葉(ja / en)。環境変数が先
-    return {"min_sim": float(c.get("min_sim", 0.2)), "extra_tools": set(c.get("extra_tools", []))}
+    return {"min_sim": float(c.get("min_sim", 0.2)), "extra_tools": set(c.get("extra_tools", [])),
+            "deny_rules": set(c.get("deny_rules", []))}  # すぐ止める合図(R1x・R2r・R3・R5・R6・R7・D)。他は確認を求める
+
+
+def salt():
+    """送り先のハッシュに混ぜる値(この機械だけの乱数)。"""
+    p = _path("salt")
+    if not os.path.exists(p):
+        with os.fdopen(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+            f.write(secrets.token_hex(16))
+    with open(p) as f:
+        return f.read().strip()
+
+
+def load_seen():
+    return acts.Seen.load(_path("seen.jsonl"), salt())
 
 
 def _append(name, rows):
@@ -111,17 +128,32 @@ def _session_of(inp):
     return inp.get("session_id") or (os.path.splitext(os.path.basename(tp))[0] if tp else None)
 
 
-def context_of(inp):
-    """フックの入力 → (今の依頼, 利用者の発言すべて, それまでの結果)。会話記録に覚え書きの分を足す。"""
+def context_of(inp, full=False):
+    """フックの入力 → (今の依頼, 利用者の発言すべて, それまでの結果)。会話記録に覚え書きの分を足す。
+    full なら、すべての手を見る判定の分(本人の言葉・貼り付けた文の指示・この会話で実行した手)の dict も返す。"""
     tp = inp.get("transcript_path")
-    humans, outputs = claude.history(tp, inp.get("tool_use_id"), claude.TAIL_BYTES) if tp and os.path.exists(tp) else ([], [])
+    pastes = []
+    humans, outputs = claude.history(tp, inp.get("tool_use_id"), claude.TAIL_BYTES, pastes) if tp and os.path.exists(tp) else ([], [])
     seen = {h.strip() for h in humans}
+    sess = {"sigs": set(), "sens": False}
     for n in _notes(_session_of(inp)):
         if n["k"] == "human" and n["t"].strip() not in seen:
             humans.append(n["t"]); seen.add(n["t"].strip())
         elif n["k"] == "result":
             outputs.append((n["tool"], n["t"]))  # 一番新しい物として足す(同じ物が記録にあっても出どころは同じ)
-    return claude.request_of(humans), " ".join(humans).lower(), outputs
+        elif n["k"] == "act":
+            sess["sigs"] |= {tuple(x) for x in n.get("sigs", [])}
+            sess["sens"] = sess["sens"] or bool(n.get("sens"))
+    base = claude.request_of(humans), " ".join(humans).lower(), outputs
+    if not full:
+        return base
+    owns, snips = [], []
+    for h in humans + pastes:
+        own, pasted = acts.split_own(h) if h in humans else ("", h)
+        owns.append(own)
+        snips += acts.instruction_snippets(pasted)
+    own_text = " ".join(owns)
+    return base + ({"own_text": own_text, "own_toks": acts.toks(own_text), "snips": snips, **sess},)
 
 
 def _row(session, tool, args, req, user_text, outputs):
@@ -150,6 +182,25 @@ def rows_from_transcript(path, extra=()):
     return rows
 
 
+def seen_from_transcript(path, seen):
+    """1 つの会話記録 → 普段(すべての手)に足す行。実行された(失敗・拒否でない)手だけ。"""
+    humans, owns, outputs, pending, rows, files = [], [], [], {}, [], {}
+    for e in claude.events(path):
+        if e[0] == "human":
+            humans.append(e[1]); owns.append(acts.split_own(e[1])[0])
+        elif e[0] == "call" and humans:
+            args = e[3] if isinstance(e[3], dict) else {}
+            pending[e[1]] = acts.Step(e[2], args, " ".join(humans).lower(), " ".join(owns), list(outputs), files=files, disk=False)
+            if e[2] == "Write" and args.get("file_path"):
+                files[args["file_path"]] = str(args.get("content", ""))
+        elif e[0] == "result":
+            st = pending.pop(e[1], None)
+            if st and not e[4]:
+                rows += st.learned(seen)
+            outputs.append((e[2], e[3].lower()))
+    return rows
+
+
 def cmd_learn(a):
     cfg = config()
     files = sorted(glob.glob(os.path.join(a.projects, "*", "*.jsonl")))
@@ -160,12 +211,18 @@ def cmd_learn(a):
     except (OSError, ValueError):
         idx = {}
     todo = [p for p in files if idx.get(p) != os.path.getsize(p)]
+    if not os.path.exists(_path("seen.jsonl")):
+        todo = files  # すべての手を見る普段が無い(v1.0 に上げた直後)= すべて読み直す
+    seen = load_seen()
+    seen_rows = []
     redo = {os.path.splitext(os.path.basename(p))[0] for p in todo}
     keep = [r for r in _read_rows("normal.jsonl") if r.get("session") not in redo]
     new = []
     for p in todo:
         new += rows_from_transcript(p, cfg["extra_tools"])
+        seen_rows += seen_from_transcript(p, seen)
         idx[p] = os.path.getsize(p)
+    _append("seen.jsonl", seen_rows)
     tmp = _path("normal.jsonl.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
@@ -174,7 +231,8 @@ def cmd_learn(a):
     os.replace(tmp, _path("normal.jsonl"))
     with os.fdopen(os.open(idx_p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
         json.dump(idx, f)
-    print(f"会話記録 {len(files)} 件(新しく読んだ {len(todo)} 件)→ 普段 {len(keep) + len(new)} 行")
+    print(f"会話記録 {len(files)} 件(新しく読んだ {len(todo)} 件)→ 普段 {len(keep) + len(new)} 行・"
+          f"手の形 {len(seen.shapes)} 種・送り先 {len(seen.dests)} 件")
 
 
 # ---- フック ----
@@ -187,18 +245,28 @@ def pre(inp, normal=None, cfg=None):
     """PreToolUse の入力 → 出力する JSON(通すなら None)。"""
     cfg = cfg or config()
     tool, args = inp.get("tool_name", ""), inp.get("tool_input") or {}
-    if not core.is_acting(tool, cfg["extra_tools"]):
-        return None
-    req, user_text, outputs = context_of(inp)
-    normal = normal or core.Normal.load(_path("normal.jsonl"))
+    req, user_text, outputs, x = context_of(inp, full=True)
     session = _session_of(inp)
-    ok, reason = core.decide(normal, tool, args, req, user_text, outputs, cfg["min_sim"], cfg["extra_tools"], session)
-    _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "session": inp.get("session_id"),
-                                 "id": inp.get("tool_use_id"), "tool": core.short_name(tool), "ok": ok, "reason": reason,
-                                 "req": req[:80]}])
+    acting = core.is_acting(tool, cfg["extra_tools"])
+    rules, reasons = [], []
+    if acting:
+        normal = normal or core.Normal.load(_path("normal.jsonl"))
+        ok, why = core.decide(normal, tool, args, req, user_text, outputs, cfg["min_sim"], cfg["extra_tools"], session)
+        if not ok:
+            rules.append("D"); reasons.append(why)
+    st = acts.Step(tool, args, user_text, x["own_text"], outputs, cwd=inp.get("cwd", ""))
+    for r, d in sorted(st.check(load_seen(), x["sigs"], x["sens"], x["snips"], x["own_toks"]), key=lambda f: acts.ORDER.index(f[0])):
+        if r not in rules:
+            rules.append(r); reasons.append(acts.reason(r, d, core._ja()))
+    ok, reason = not rules, " ".join(reasons)
+    if acting or rules:
+        _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "session": inp.get("session_id"),
+                                     "id": inp.get("tool_use_id"), "tool": core.short_name(tool), "ok": ok, "reason": reason,
+                                     "rules": rules, "req": req[:80]}])
     if ok:
         return None
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask",
+    decision = "deny" if set(rules) & cfg["deny_rules"] else "ask"
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": decision,
                                    "permissionDecisionReason": reason}}
 
 
@@ -207,11 +275,14 @@ def post(inp, cfg=None):
     cfg = cfg or config()
     tool, args = inp.get("tool_name", ""), inp.get("tool_input") or {}
     session = _session_of(inp)
-    if not core.is_acting(tool, cfg["extra_tools"]):
-        _note(session, _result_note(tool, inp))
-        return None
-    req, user_text, outputs = context_of(inp)
+    req, user_text, outputs, x = context_of(inp, full=True)
+    seen = load_seen()
+    st = acts.Step(tool, args, user_text, x["own_text"], outputs, cwd=inp.get("cwd", ""))
+    _append("seen.jsonl", st.learned(seen))  # 実行された手 = 普段(すべての手)に加える
+    _note(session, {"k": "act", "sigs": [list(s) for s in st.sig | set(st.web)], "sens": st.sens})
     _note(session, _result_note(tool, inp))
+    if not core.is_acting(tool, cfg["extra_tools"]):
+        return None
     if not req:
         return None
     r = _row(session, tool, args, req, user_text, outputs)

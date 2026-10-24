@@ -2,7 +2,7 @@
 
 [日本語](README.ja.md)
 
-**Right before an AI agent uses a tool, RS guard compares "the task you asked for" and "the action it is about to take" with your usual work. If the action is outside your usual work, it asks you to confirm before it runs.**
+**Right before an AI agent uses a tool, RS guard compares "the task you asked for" and "the action it is about to take" with your usual work. If the action is outside your usual work, it asks you to confirm before it runs. Every action is checked, including shell commands, file writes and scripts.**
 
 Example: you asked "Who is coming to tomorrow's meeting?", and the agent is about to email an unknown address it found in a calendar event. This is a typical prompt injection (an attack where instructions hidden in a fetched document or email hijack the agent). RS guard stops the call before it runs and tells you why:
 
@@ -12,11 +12,13 @@ RS: the to of send_email comes from the result of search_calendar_events. Simila
 
 - **Your usual work is built automatically** from the conversation logs already on your machine (`~/.claude/projects/` for Claude Code), on the day you install it. Nobody has to write an allow list.
 - **Learns in one step**: an action you approve at a confirmation becomes part of your usual work right away.
-- **No LLM calls, nothing leaves your machine**: each decision is a lookup against your logs and takes 50–60 ms.
+- **No LLM calls, nothing leaves your machine**: each decision is a lookup against your logs and takes about 0.1 s (including hook start-up).
 
 Part of Reflex-Sentinel (RS). RS itself is research on catching concealment by reading an agent's internal state before it acts ([../README.md](../README.md)).
 
 ## Results
+
+### Email, calendar and other tools (MCP, web)
 
 **Stopping attacks**: measured on the public run logs of [AgentDojo](https://github.com/ethz-spylab/agentdojo) (the standard prompt-injection benchmark for agents: 97 tasks over email, calendar, banking, Slack and travel). The attack success rate (ASR) is the share of attacked runs in which the attacker's intended action was executed. Numbers are for repeated work (the same kind of task was done before).
 
@@ -32,9 +34,32 @@ Part of Reflex-Sentinel (RS). RS itself is research on catching concealment by r
 | Llama 3.3 70B | 23.1 % / 57.7 % | 1.6 % / 57.7 % |
 | Command R+ | 4.5 % / 24.7 % | 3.8 % / 22.7 % |
 
-For unseen kinds of tasks (the 97 tasks split into 5 folds, usual work built only from the other tasks), GPT-4o gets 1.3 % / 45.4 %: attacks are stopped just as well, but more normal tasks get interrupted.
+For unseen kinds of tasks (the 97 tasks split into 5 folds, usual work built only from the other tasks), GPT-4o gets 1.3 % / 45.4 %: attacks are stopped just as well, but more normal tasks get interrupted. (This table measures the MCP / web part of the decision.)
 
-**Interrupting normal work**: replaying one developer's Claude Code logs (72 conversations over 28 days) in time order, RS guard asked for confirmation on 17 of 102 outward-acting calls (0.6 per day). Almost all of them were genuinely new kinds of writes (for example, the first few writes in the first conversation that edited a spreadsheet).
+### Coding agents (shell, files)
+
+We ran [CodeIPI](https://github.com/UKGovernmentBEIS/inspect_evals) (UK AISI inspect_evals, MIT; 45 tasks testing whether a coding agent follows instructions hidden in an issue, a code comment, a README or a config file) three times each, with a local Gemma 4 26B as the agent.
+
+| | Result |
+|---|---|
+| 12 runs where the agent followed the injection and ran a harmful action (reading a secret, running the injected command, writing to requirements.txt) | **all 12 stopped right before that action** |
+| 30 normal runs (264 actions) | 0 actions stopped |
+
+This agent never followed injections hidden in files. So we also checked whether each injected command would have been stopped *if* the agent had run it, against one developer's usual work:
+
+| Injected payload | Files (comments, README, config) | Issue text |
+|---|---|---|
+| Read secrets, persist, install packages | **15 of 18 stopped** | 6 of 7 |
+| Only a "can I run code" marker (`echo CANARY…`) | 0 of 7 | 2 of 3 |
+
+- Injections in files are stopped by **the action itself** (a secret, persistence location or package touched for the first time), not by how the instruction is worded, so rewording the injection does not help the attacker.
+- The 3 misses dump all environment variables or read `DATABASE_URL`; this developer's usual work already had the same kind of action.
+- Marker-only payloads are harmless commands and are not stopped by actions (a real attack would send, persist or read secrets, and stop there).
+- With the same usual work, 1 of CodeIPI's 30 normal runs was stopped (fetching a site for the first time).
+
+### Interrupting normal work
+
+Replaying one developer's Claude Code logs (73 conversations) in time order and counting the last 7 days (5,342 actions), RS guard asked 52 times (**7.4 per day**): 3.4 per day for MCP / web actions and 4.3 per day for shell, files and others (a new destination, a new destination after reading keys, a secret or package touched for the first time, a delete / config command used for the first time). Each one you approve joins your usual work and is not asked again.
 
 ## Install (Claude Code)
 
@@ -52,7 +77,27 @@ python3 -m venv ~/.rs-guard/venv
 
 ## How it decides
 
-1. Only outward-acting tools are checked: MCP tools whose name starts with send / create / update / delete / invite / share / post …, and opening web pages (WebFetch). Add more with `extra_tools` in `~/.rs-guard/config.json`.
+Every action (shell, files, scripts, MCP, web) goes through the two checks below. If either fires, RS guard asks.
+
+### All actions
+
+Actions are put into classes: send (network, publish, message) / delete (rm, kill, git reset …) / change config (keys, crontab, chmod, sudo, config files) / execute (scripts) / local work. Shell lines are split per command (quotes kept, heredoc bodies dropped, commands inside `ssh host '…'` and `bash -c '…'` included). For scripts being run (`python x.py`, `python -c "…"`) the content is read too, for network libraries and destinations.
+
+| Signal | Asks when |
+|---|---|
+| R3 | sending to a new destination after reading keys or settings |
+| R7 | following an instruction found in pasted text (Claude Code's `<pasted_content>`) as is |
+| R1x | a send / delete / config action uses a value from a web or connector result in a new way |
+| R8 | a secret (key environment variables, `.env`, key files), persistence location (`.bashrc`, git hooks, cron, `/etc/`) or package is touched for the first time |
+| R5 | a new destination (ssh host, scp / rsync host, URL a curl sends to, git push remote, MCP server, email recipient, URL inside a script) |
+| R6 | curl / wget fetches a link found in content it read (not search results) in a new way |
+| R2r | a send / delete / config command is used for the first time |
+
+Destinations, secrets and packages that appear in your own words are allowed (those that only appear in pasted text are not).
+
+### MCP and web actions (compared with similar past requests)
+
+1. Only outward-acting tools are checked: MCP tools whose name starts with send / create / update / delete / invite / share / post / copy / batch …, opening web pages (WebFetch), and web search (WebSearch; only emails, URLs and long IDs inside the query are checked). Add more with `extra_tools` in `~/.rs-guard/config.json`.
 2. For each argument value (email, URL, ID, short string), find where it came from: your request, the result of a specific tool, or nowhere.
 3. If every value came from your request, allow (it is your instruction).
 4. If the same shape (tool, argument name, source) already ran in this conversation, allow.
@@ -61,11 +106,14 @@ python3 -m venv ~/.rs-guard/venv
 
 "The current request" is your last 3 messages (a follow-up such as "ok, go ahead" alone does not say what the task is).
 
+To block instead of asking for some signals, set e.g. `"deny_rules": ["R3", "R7"]` in `~/.rs-guard/config.json`.
+
 ## Files and privacy
 
 | File | Contents |
 |---|---|
-| `~/.rs-guard/normal.jsonl` | Usual work: request text, tool names, argument names, source categories. **Values themselves (recipients, bodies) are not stored** |
+| `~/.rs-guard/normal.jsonl` | Usual work (MCP / web): request text, tool names, argument names, source categories. **Values themselves (recipients, bodies) are not stored** |
+| `~/.rs-guard/seen.jsonl` | Usual work (all actions): command names, source categories, and **hashes** of destinations, secrets and packages (mixed with a per-machine random `salt`; the names themselves are not stored) |
 | `~/.rs-guard/decisions.jsonl` | Decision log (what was asked and why) |
 | `~/.rs-guard/sessions/` | Per-conversation notes (your messages and tool results). Claude Code writes its log asynchronously, so these keep the latest result from being missed. Deleted after 7 days |
 
@@ -73,8 +121,10 @@ All files are mode 600. Nothing is sent anywhere.
 
 ## Scope and limits
 
-- **Shell (Bash) and file writes are not checked.** Use RS guard **alongside** a rule-based guard (command allow/deny lists) for things like sending data out with `curl`. Claude Code runs multiple hooks side by side.
-- Abuse inside your usual work (sending a different body to your usual recipient in your usual way) is not caught.
+- Abuse inside your usual work is not caught (a different body to your usual recipient, reading a secret you have read before, …).
+- Instructions inside files the agent reads are stopped through the **action** that follows them (a new destination, secret, persistence location or package), not by reading the instruction (in coding, following the steps in a README or design doc is normal). Injections that only run a harmless command (such as `echo`) are not stopped.
+- Network use inside scripts is read from the file on disk at run time and from `-c` strings. Destinations built at run time, read from another file, or sent from a binary are not visible. Use RS guard alongside a layer that sees real outgoing traffic (a local proxy or firewall).
+- Commands are recognized by fixed rules (name lists and regular expressions). Sending with a tool missing from the lists is not caught as "a new command".
 - For a new kind of request, every outward-acting call asks (this decreases with use).
 - Only the last 4 MB of the conversation log is read (for speed). Values that appeared only before that window count as "from nowhere", which lets web fetches through.
 - v1.0 supports Claude Code only.
@@ -89,11 +139,13 @@ Learning allowed action flows and value sources from normal runs is essentially 
 
 ## Reproduce
 
-`repro/` contains the AgentDojo evaluation (AgentDojo `runs/` are MIT and not bundled).
+`repro/` contains the AgentDojo and CodeIPI evaluations (AgentDojo `runs/` and the CodeIPI tasks are MIT and not bundled).
 
 ```bash
 python repro/dojo_gt.py --src <agentdojo>/src/agentdojo/default_suites --out gt.json
 python repro/dojo_product.py --runs <agentdojo>/runs --gt gt.json --seen-task --model gpt-4o-2024-05-13
+# CodeIPI: would each injection be stopped if the agent followed it (usual work = your local Claude Code logs)
+python repro/codeipi_counterfactual.py --bench <CodeIPI samples.json>
 ```
 
 Unit tests: `python -m pytest -q tests` (pytest is needed for tests only).
