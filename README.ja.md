@@ -77,6 +77,10 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 **安全のために。** エージェントのコマンドは、モデルが書いたコードです。`nobody` 権限で、問題ごとの作業場の中だけで実行し、コンテナはネットワークを切って起動します(`scripts/run_in_vllm.sh`)。認証情報のある機械では実行しないでください。
 
+## RS guard(自分で動かしていないエージェント向け)
+
+内部状態を読むには、自分で動かすモデルが要ります。Claude Code などのエージェントには、[`guard/`](guard/README.ja.md) が行動の方を見張ります。ツールを使う直前に、頼まれた仕事と今しようとしている手を、あなたの普段(手元の会話記録から作る)と比べ、普段に無い手なら確認を求めます。AgentDojo で GPT-4o の攻撃成功率 47.7 % → 1.4 %、仕事の成功は変わらず(69.1 %)。LLM を呼ばず、1 回 50〜60 ms です。
+
 ## ライセンス
 
 コード:Apache License 2.0。Hugging Face のデータ:CC BY 4.0(上流の条件はデータのカードと [NOTICE](NOTICE) を参照)。

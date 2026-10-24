@@ -161,6 +161,13 @@ you can afford to lose, never on a host with credentials.
 | `rs/export_heatmap.py`, `rs/make_figures.py` | figures (`--lang en` / `ja`) |
 | `rs/redact.py`, `rs/build_release.py` | how the released data was made |
 
+## RS guard (for agents you do not host)
+
+Reading internal state needs a model you run yourself. For agents such as Claude Code, [`guard/`](guard/README.md) watches
+the actions instead: right before a tool call, it compares the request and the action with your usual work (built from
+your local conversation logs) and asks before unusual actions. On AgentDojo, GPT-4o's attack success rate goes from
+47.7 % to 1.4 % with task success unchanged (69.1 %). No LLM calls, 50–60 ms per decision.
+
 ## License
 
 Code: Apache License 2.0. Data on Hugging Face: CC BY 4.0, see its card and [NOTICE](NOTICE) for upstream terms.

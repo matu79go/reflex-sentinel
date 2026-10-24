@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rs-guard"
+version = "1.0.0.dev0"
+description = "Right before an AI agent uses a tool, compare the request and the action with your usual work, and ask before unusual actions"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+rs-guard = "rs_guard.cli:main"
+
+[tool.setuptools]
+packages = ["rs_guard"]
