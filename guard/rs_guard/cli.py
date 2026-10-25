@@ -123,7 +123,12 @@ def clean_sessions(days=7):
 NOTE_MAX = 100_000  # 1 つの結果で覚え書きに残す文字数の上限(大きなファイルを読んだ結果などで膨らまないように)
 
 
+WRITERS = {"Edit", "MultiEdit", "Write", "NotebookEdit"}  # 結果はファイル全体の元の中身・書いた中身 = モデルが読んだ外の文ではない
+
+
 def _result_note(tool, inp):
+    if tool in WRITERS:  # 元の中身(originalFile)を出どころにすると、読んでいない部分の先で止める(design §14-10 の 4)
+        return {"k": "result", "tool": tool, "t": ""}
     return {"k": "result", "tool": tool, "t": " ".join(_strings(inp.get("tool_response"))).lower()[:NOTE_MAX]}
 
 

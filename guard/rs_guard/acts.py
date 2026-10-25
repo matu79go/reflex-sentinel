@@ -324,6 +324,34 @@ def _pkgs(ws):
     return out
 
 
+GREP_VALUE_OPTS = {"-A", "-B", "-C", "-m", "--max-count", "--include", "--exclude", "--exclude-dir", "--context",
+                   "--after-context", "--before-context", "--color", "--label"}
+
+
+def _file_args(p, ws):
+    """読むコマンドの語 → ファイルの引数。grep は探す語(-e・-f が無ければ最初の引数、あれば -e の値)を除く。"""
+    if p != "grep":
+        return ws[1:]
+    out, pat_given, skip, opts_done = [], False, False, False
+    rest = ws[1:]
+    for i, w in enumerate(rest):
+        if skip:
+            skip = False
+            continue
+        if not opts_done and w == "--":
+            opts_done = True
+            continue
+        if not opts_done and w.startswith("-") and w != "-":
+            if w in ("-e", "--regexp", "-f", "--file"):
+                pat_given = True
+                skip = w in ("-e", "--regexp")  # -f の値はファイルなので残す
+            elif w in GREP_VALUE_OPTS:
+                skip = True
+            continue
+        out.append(w)
+    return out if pat_given else out[1:]
+
+
 def held_targets(tool, args, scripts=()):
     """手が触る秘密・居座り先・入れるパッケージ → {"secret:…", "persist:…", "pkg:…"}。"""
     out = set()
@@ -341,7 +369,7 @@ def held_targets(tool, args, scripts=()):
             if p == "printenv" and len(ws) > 1 and re.fullmatch(SECRET_NAME, ws[1]):
                 out.add("secret:env:" + ws[1].lower())
             if p in READERS:
-                out |= {"secret:file:" + w.lower() for w in ws[1:] if SECRET_FILE.search(w) and not NOT_SECRET.search(w)
+                out |= {"secret:file:" + w.lower() for w in _file_args(p, ws) if SECRET_FILE.search(w) and not NOT_SECRET.search(w)
                         and not re.search(r"\s", w)}
             if p == "crontab" and len(ws) > 1 and ws[1] not in ("-l",):
                 out.add("persist:crontab")
