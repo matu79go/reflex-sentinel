@@ -10,7 +10,7 @@ Example: you asked "Who is coming to tomorrow's meeting?", and the agent is abou
 RS: the to of send_email comes from the result of search_calendar_events. Similar past requests never had this shape.
 ```
 
-- **Works with the popular agent tools**: hooks into Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (CLI, VS Code), Cline and Windsurf. One decision engine and one usual work, the same yardstick across tools.
+- **Works with the popular agent tools**: hooks into Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (CLI, VS Code), Antigravity, Cline and Windsurf. One decision engine and one usual work, the same yardstick across tools.
 - **Your usual work is built automatically** from the conversation logs already on your machine (Claude Code, Codex), on the day you install it. Nobody has to write an allow list.
 - **Learns in one step**: an action you approve at a confirmation becomes part of your usual work right away.
 - **No LLM calls, nothing leaves your machine**: each decision is a lookup against your logs and takes about 0.1 s (including hook start-up).
@@ -68,7 +68,7 @@ Replaying 15 Codex logs the same way (9 days, 2,579 actions) gave 12 confirmatio
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.5#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (or: install codex, …)
 ```
@@ -90,7 +90,8 @@ RS guard contacts the network only when you run this command (the hooks never do
 | Codex CLI | `~/.codex/hooks.json` (PreToolUse, …) | blocks once → goes through when retried after you approve | runs on the real app (stops a first-time delete, destination and package; goes through when retried after you approve; usual work built from its logs) |
 | Gemini CLI | `~/.gemini/settings.json` (BeforeTool, …) | blocks once → same | tested with documented inputs |
 | Cursor | `~/.cursor/hooks.json` (beforeShellExecution, beforeMCPExecution, beforeReadFile, …) | confirmation prompt | tested with documented inputs |
-| GitHub Copilot (CLI, VS Code) | `~/.copilot/hooks/rs-guard.json` (preToolUse, …) | confirmation prompt | tested with documented inputs |
+| GitHub Copilot (CLI, VS Code) | `~/.copilot/hooks/rs-guard.json` (preToolUse, …) | confirmation prompt | tested with documented inputs (also on Windows; not yet on the real app) |
+| Antigravity | `~/.gemini/config/hooks.json` (PreToolUse, PostToolUse) | confirmation prompt | tested with documented inputs (also on Windows; not yet on the real app) |
 | Cline | `~/Documents/Cline/Rules/Hooks/` (PreToolUse, …) | blocks once → same | tested with documented inputs |
 | Windsurf | `~/.codeium/windsurf/hooks.json` (pre_run_command, …) | blocks once → same | tested with documented inputs |
 
@@ -112,7 +113,8 @@ RS: first time using the send / delete / config command shred. (Ask the user. If
 - Codex runs the hooks only after you trust them with `/hooks` inside Codex. Gemini CLI may need `/hooks enable-all`. Cline needs hooks enabled under Features in its settings.
 - Cursor has no pre-execution hook for file writes, so writes are only learned afterwards (shell, MCP and file reads are checked before they run).
 - Usual work is built from logs on install day for Claude Code and Codex. For the other tools it grows as you use them (usual work is shared across all tools).
-- For tools that run on Windows (Windows VS Code, Cursor, …), install with Windows Python using the same steps (a WSL install is not called by Windows tools).
+- For tools that run on Windows (Windows VS Code, Antigravity, Cursor, …), install with Windows Python using the same steps (a WSL install is not called by Windows tools). The command is `%USERPROFILE%\.rs-guard\venv\Scripts\rs-guard.exe`. To build usual work from Claude Code / Codex logs inside WSL, pass them with `learn --projects \\wsl.localhost\<distro>\home\<user>\.claude\projects`.
+- Antigravity has no hook for your messages, so your request text is not used there (the checks on actions still run).
 - `install` keeps existing hooks and, the first time it touches a file, saves the original as `<file>.rs-guard.bak`. To remove RS guard, restore that file or delete the rs-guard entries.
 - How often and why it asked: `rs-guard status` / `rs-guard explain`.
 - Reasons are shown in English or Japanese following `LANG` (fix it with `"lang": "en"` in `~/.rs-guard/config.json` or `RS_GUARD_LANG`).

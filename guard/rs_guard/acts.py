@@ -149,7 +149,7 @@ def script_texts(cmd, cwd="", files=None, disk=True):
             out.append(files[p])
         elif disk and os.path.isfile(p):
             try:
-                with open(p, errors="replace") as fh:
+                with open(p, encoding="utf-8", errors="replace") as fh:
                     out.append(fh.read(SCRIPT_MAX))
             except OSError:
                 pass
@@ -529,7 +529,7 @@ class Seen:
     def load(cls, path, salt=""):
         s = cls(salt)
         if os.path.exists(path):
-            with open(path) as f:
+            with open(path, encoding="utf-8", errors="replace") as f:
                 for l in f:
                     if l.strip():
                         try:

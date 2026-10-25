@@ -10,6 +10,7 @@
                                                            preToolUse / postToolUse / userPromptSubmitted(確認を出せる。VS Code も同じ)
   cline    https://docs.cline.bot/features/hooks           PreToolUse / PostToolUse / UserPromptSubmit(取り消しだけ)
   windsurf https://docs.devin.ai/desktop/cascade/hooks     pre_run_command / pre_mcp_tool_use / pre_write_code …(止めるだけ)
+  antigravity https://antigravity.google/docs/hooks?tab=ide PreToolUse / PostToolUse(確認を出せる。発言のフックは無い)
 """
 import json
 import os
@@ -28,8 +29,9 @@ EVENTS = {
     "windsurf": {"pre_run_command": "pre", "pre_mcp_tool_use": "pre", "pre_write_code": "pre", "pre_read_code": "pre",
                  "post_run_command": "post", "post_mcp_tool_use": "post", "post_write_code": "post",
                  "post_read_code": "post", "pre_user_prompt": "prompt"},
+    "antigravity": {"PreToolUse": "pre", "PostToolUse": "post"},
 }
-ASK_OK = {"claude", "cursor", "copilot"}  # 確認の画面を出せる道具。他は拒否して、利用者が良いと言った後のやり直しを通す
+ASK_OK = {"claude", "cursor", "copilot", "antigravity"}  # 確認の画面を出せる道具。他は拒否して、利用者が良いと言った後のやり直しを通す
 
 
 def _json(v):
@@ -128,6 +130,29 @@ def _tool(agent, name, args):
         if name in ("web_fetch", "browser_action"):
             return [("WebFetch", {"url": a.get("url", "")})]
         return [(name, a)]
+    if agent == "antigravity":  # 引数の名前は版で変わり得るので、いくつかの書き方を受ける
+        g = lambda *ks: next((a[k] for k in ks if a.get(k)), "")
+        if name == "run_command":
+            return [("Bash", {"command": g("CommandLine", "commandLine", "command", "Command")})]
+        if name == "write_to_file":
+            return [("Write", {"file_path": g("TargetFile", "targetFile", "path", "file_path"),
+                               "content": g("CodeContent", "codeContent", "content")})]
+        if name in ("replace_file_content", "multi_replace_file_content"):
+            chunks = a.get("ReplacementChunks") or a.get("replacementChunks") or []
+            new = "\n".join(str(c.get("ReplacementContent") or c.get("replacementContent") or "") for c in chunks if isinstance(c, dict))
+            old = "\n".join(str(c.get("TargetContent") or c.get("targetContent") or "") for c in chunks if isinstance(c, dict))
+            return [("Edit", {"file_path": g("TargetFile", "targetFile", "path", "file_path"),
+                              "old_string": old or g("TargetContent", "targetContent"),
+                              "new_string": new or g("ReplacementContent", "replacementContent")})]
+        if name == "view_file":
+            return [("Read", {"file_path": g("AbsolutePath", "absolutePath", "path", "file_path")})]
+        if name == "read_url_content":
+            return [("WebFetch", {"url": g("Url", "url")})]
+        if name == "search_web":
+            return [("WebSearch", {"query": g("query", "Query")})]
+        if name == "send_message":
+            return [(name, a)]
+        return [(name, a)]
     return [(name, a)]
 
 
@@ -213,6 +238,12 @@ def normalize(agent, event, raw):
                 "new_string": "\n".join(e.get("new_string", "") for e in edits)}}]
         if event.endswith("read_code"):
             return kind, [{**base, "tool_name": "Read", "tool_input": {"file_path": ti.get("file_path", "")}}]
+    if agent == "antigravity":
+        base.update(session_id=raw.get("conversationId"), cwd=(raw.get("workspacePaths") or [""])[0])
+        tc = raw.get("toolCall") or {}
+        resp = raw.get("toolResult") or raw.get("result") or raw.get("output")
+        return kind, [{**base, "tool_name": n, "tool_input": a, "tool_response": resp}
+                      for n, a in _tool(agent, tc.get("name", ""), tc.get("args"))]
     return kind, []
 
 
@@ -250,6 +281,8 @@ def render(agent, event, decision, reason):
         return json.dumps({"cancel": True, "errorMessage": reason}, ensure_ascii=False), "", 0
     if agent == "windsurf":
         return ("", "", 0) if decision == "allow" else ("", reason, 2)
+    if agent == "antigravity":  # allow = 次のフック・既定の方針に任せる
+        return json.dumps({"decision": decision, **({"reason": reason} if reason else {})}, ensure_ascii=False), "", 0
     return "", "", 0
 
 
@@ -261,7 +294,7 @@ def render_other(agent, kind):
         return json.dumps({"continue": True})
     if agent == "cline":
         return json.dumps({"cancel": False})
-    if agent == "copilot":
+    if agent in ("copilot", "antigravity"):
         return "{}"
     return ""
 
@@ -286,7 +319,7 @@ def codex_events(path):
     手 = exec の中の tools.exec_command({cmd}) と tools.apply_patch(…)、関数の呼び出し(exec_command・shell・apply_patch・MCP)。
     exec の中の手は、まとめて返る 1 つの結果を、それぞれの手の結果とする。"""
     subs = {}
-    with open(path, errors="replace") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
             try:
                 d = json.loads(line)

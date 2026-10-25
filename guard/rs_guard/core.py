@@ -95,6 +95,8 @@ def web_provenance(args, user_text, outputs):
     host = _host(url)
     if url in user_text or (host and host in user_text):
         return {"url": ["user"]}
+    if any(short_name(t) in SEARCH_TOOLS and url in o for t, o in outputs):  # 検索で見つけた先は、開き直しても検索が出どころ(§14-10 の 6)
+        return {"url": ["tool:WebSearch"]}
     src = next(("tool:" + short_name(t) for t, o in reversed(outputs) if url in o), None)
     if src is None and host:
         src = next(("tool:" + short_name(t) for t, o in reversed(outputs)
@@ -162,7 +164,7 @@ class Normal:
     def load(cls, path):
         rows = []
         if os.path.exists(path):
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 rows = [json.loads(l) for l in f if l.strip()]
         return cls(rows)
 

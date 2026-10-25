@@ -5,7 +5,7 @@
   rs-guard claude-post      PostToolUse のフック(実行された手を普段に加える、結果を会話ごとの覚え書きに足す)
   rs-guard claude-prompt    UserPromptSubmit のフック(利用者の発言を会話ごとの覚え書きに足す)
   rs-guard install <道具>   道具の設定にフックを足す(既存のフックは残す)。道具 = claude / codex / gemini / cursor /
-                            copilot / cline / windsurf / all(入っている物すべて)
+                            copilot / cline / windsurf / antigravity / all(入っている物すべて)
   rs-guard hook <道具> <出来事>  各道具のフックの入口(入力・出力の形は agents.py でそろえる)
   rs-guard status / explain 普段の件数 / 最近の確認とその理由
   rs-guard update [--check] GitHub の最新の版を見て、新しければ入れ直す(打った時だけ外へ問い合わせる。普段の記録は残る)
@@ -44,7 +44,7 @@ def _path(name):
 
 def config():
     try:
-        with open(_path("config.json")) as f:
+        with open(_path("config.json"), encoding="utf-8") as f:
             c = json.load(f)
     except (OSError, ValueError):
         c = {}
@@ -58,9 +58,9 @@ def salt():
     """送り先のハッシュに混ぜる値(この機械だけの乱数)。"""
     p = _path("salt")
     if not os.path.exists(p):
-        with os.fdopen(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+        with os.fdopen(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8") as f:
             f.write(secrets.token_hex(16))
-    with open(p) as f:
+    with open(p, encoding="utf-8", errors="replace") as f:
         return f.read().strip()
 
 
@@ -71,7 +71,7 @@ def load_seen():
 def _append(name, rows):
     p = _path(name)
     fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    with os.fdopen(fd, "a") as f:
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
@@ -80,7 +80,7 @@ def _read_rows(name):
     p = _path(name)
     if not os.path.exists(p):
         return []
-    with open(p) as f:
+    with open(p, encoding="utf-8", errors="replace") as f:
         return [json.loads(l) for l in f if l.strip()]
 
 
@@ -104,7 +104,7 @@ def _note(session, row):
     if not session:
         return
     fd = os.open(_session_file(session), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-    with os.fdopen(fd, "a") as f:
+    with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
@@ -112,7 +112,7 @@ def _notes(session):
     p = _session_file(session) if session else None
     if not p or not os.path.exists(p):
         return []
-    with open(p) as f:
+    with open(p, encoding="utf-8", errors="replace") as f:
         return [json.loads(l) for l in f if l.strip()]
 
 
@@ -224,7 +224,7 @@ def cmd_learn(a):
     reader = {p: agents.codex_events for p in codex}
     idx_p = _path("learned.json")
     try:
-        with open(idx_p) as f:
+        with open(idx_p, encoding="utf-8") as f:
             idx = json.load(f)
     except (OSError, ValueError):
         idx = {}
@@ -243,11 +243,11 @@ def cmd_learn(a):
     _append("seen.jsonl", seen_rows)
     tmp = _path("normal.jsonl.tmp")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         for r in keep + new:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     os.replace(tmp, _path("normal.jsonl"))
-    with os.fdopen(os.open(idx_p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+    with os.fdopen(os.open(idx_p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
         json.dump(idx, f)
     print(f"会話記録 {len(files)} 件(うち Codex {len(codex)} 件、新しく読んだ {len(todo)} 件)→ 普段 {len(keep) + len(new)} 行・"
           f"手の形 {len(seen.shapes)} 種・送り先 {len(seen.dests)} 件")
@@ -446,11 +446,14 @@ HOOK_PRE, HOOK_POST, HOOK_PROMPT = "claude-pre", "claude-post", "claude-prompt"
 def _exe():
     """フックに書く rs-guard の場所(フックは PATH が違うことがあるので、実行中の物の絶対パス)。"""
     a = sys.argv[0] if sys.argv else ""
-    return os.path.abspath(a) if os.path.basename(a) == "rs-guard" else "rs-guard"
+    if os.path.splitext(re.split(r"[/\\]", a)[-1])[0] != "rs-guard":  # Windows は rs-guard.exe
+        return "rs-guard"
+    p = os.path.abspath(a)
+    return f'"{p}"' if " " in p else p  # Windows の「Program Files」などに入れた時
 
 
 def _is_ours(cmd, sub):
-    return cmd.split("/")[-1] == f"rs-guard {sub}"
+    return re.split(r"[/\\]", cmd.replace('"', ""))[-1].replace("rs-guard.exe", "rs-guard") == f"rs-guard {sub}"
 
 
 def install_claude(settings):
@@ -471,14 +474,14 @@ def _edit_json(p, fn):
     """JSON の設定を読み、fn で足し、書き戻す。初めて触る時だけ元を .rs-guard.bak に残す。"""
     s = {}
     if os.path.exists(p):
-        with open(p) as f:
+        with open(p, encoding="utf-8", errors="replace") as f:
             s = json.load(f)
         if not os.path.exists(p + ".rs-guard.bak"):
-            with open(p + ".rs-guard.bak", "w") as f:
+            with open(p + ".rs-guard.bak", "w", encoding="utf-8") as f:
                 json.dump(s, f, ensure_ascii=False, indent=2)
     fn(s)
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w") as f:
+    with open(p, "w", encoding="utf-8") as f:
         json.dump(s, f, ensure_ascii=False, indent=2)
     return p
 
@@ -507,7 +510,7 @@ def _copilot_home():
 
 INSTALL_PATHS = {  # 道具 → 入っているかを見る場所
     "codex": "~/.codex", "gemini": "~/.gemini", "cursor": "~/.cursor", "copilot": None,
-    "cline": "~/Documents/Cline", "windsurf": "~/.codeium/windsurf",
+    "cline": "~/Documents/Cline", "windsurf": "~/.codeium/windsurf", "antigravity": "~/.gemini/antigravity",
 }
 
 
@@ -534,16 +537,17 @@ def install_agent(agent, settings_path=None):
     if agent == "copilot":  # Copilot CLI と VS Code の Copilot が読む利用者の置き場。rs-guard だけのファイル
         p = os.path.join(_copilot_home(), "hooks", "rs-guard.json")
         return _edit_json(p, lambda s: s.update({"version": 1, "hooks": {
-            e: [{"type": "command", "bash": _hook_cmd(agent, e), "timeoutSec": 30}] for e in ev}}))
+            e: [{"type": "command", "command": _hook_cmd(agent, e), "bash": _hook_cmd(agent, e).replace("\\", "/"),
+                 "powershell": "& " + _hook_cmd(agent, e), "timeoutSec": 30}] for e in ev}}))  # Windows の VS Code は powershell
     if agent == "cline":  # 出来事の名前のファイル(拡張子なし・実行できる)を置く
         d = os.path.expanduser("~/Documents/Cline/Rules/Hooks")
         os.makedirs(d, exist_ok=True)
         for e in ev:
             p = os.path.join(d, e)
-            if os.path.exists(p) and "rs-guard" not in open(p, errors="replace").read():
+            if os.path.exists(p) and "rs-guard" not in open(p, encoding="utf-8", errors="replace").read():
                 print(f"  {p} は別のフックがあるので書きません(手で rs-guard の行を足してください)")
                 continue
-            with open(p, "w") as f:
+            with open(p, "w", encoding="utf-8") as f:
                 f.write(f"#!/bin/sh\nexec {_hook_cmd(agent, e)}\n")
             os.chmod(p, 0o755)
         return d
@@ -554,6 +558,9 @@ def install_agent(agent, settings_path=None):
                 if not _has(h.get(e, []), agent, e):
                     h.setdefault(e, []).append({"command": _hook_cmd(agent, e), "show_output": False})
         return _edit_json(os.path.expanduser("~/.codeium/windsurf/hooks.json"), f)
+    if agent == "antigravity":  # 利用者の置き場の hooks.json。最上位の鍵 = フックの名前(rs-guard)
+        return _edit_json(os.path.expanduser("~/.gemini/config/hooks.json"), lambda s: s.update({"rs-guard": {
+            e: [{"matcher": "*", "hooks": [{"type": "command", "command": _hook_cmd(agent, e), "timeout": 30}]}] for e in ev}}))
     raise ValueError(agent)
 
 
@@ -571,6 +578,8 @@ NOTES = {
     "gemini": "Gemini CLI で /hooks enable-all が要ることがあります。確認の画面が無いので、一度止めて、良いと言った後のやり直しで通します。",
     "cline": "Cline の設定の Features でフックを有効にしてください。取り消しだけなので、一度止めて、良いと言った後のやり直しで通します。",
     "windsurf": "止めるだけなので、一度止めて、良いと言った後のやり直しで通します。",
+    "antigravity": "発言のフックが無いので、依頼の文は使えず「初めての依頼」として確認が出やすくなります。"
+                   "Antigravity の版によってはフックが動かないという報告があります(動いたかは rs-guard explain で確かめられます)。",
     "cursor": "ファイルの書き込みは実行前のフックが無いので、書いた後に普段へ入れるだけです(シェル・MCP・読み込みは実行前に見ます)。",
 }
 
@@ -579,7 +588,7 @@ def cmd_install(a):
     targets = installed_agents() if a.target == "all" else [a.target]
     for t in targets:
         if t not in agents.EVENTS:
-            sys.exit(f"知らない道具です: {t}(claude / codex / gemini / cursor / copilot / cline / windsurf / all)")
+            sys.exit(f"知らない道具です: {t}(claude / codex / gemini / cursor / copilot / cline / windsurf / antigravity / all)")
         p = install_agent(t, a.settings if t == "claude" else None)
         print(f"{t}: {p} にフックを足しました(元の設定は .rs-guard.bak)")
         if t in NOTES:
@@ -647,7 +656,17 @@ def cmd_update(a):
     print(f"{cur} → {latest} に更新しました(普段の記録はそのまま)" if r.returncode == 0 else f"更新に失敗しました(pip の終了コード {r.returncode})")
 
 
+def _utf8_stdio():
+    """フックの入出力は UTF-8 の JSON。Windows の Python は既定で cp932 などになり、日本語の依頼・理由が化けるので固定する。"""
+    for st in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            st.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv=None):
+    _utf8_stdio()
     ap = argparse.ArgumentParser(prog="rs-guard")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("learn")

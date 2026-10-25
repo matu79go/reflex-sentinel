@@ -167,7 +167,7 @@ you can afford to lose, never on a host with credentials.
 
 **Right before an AI agent uses a tool, RS guard stops the action and asks you if it is outside your usual work.** Your usual work is built automatically from the Claude Code logs already on your machine; nobody writes an allow list. No LLM calls, nothing leaves your machine (about 0.1 s per decision).
 
-RS itself reads internal state and needs a model you run yourself. RS guard watches **the actions** instead, so it works with agents you cannot look inside. It hooks into Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (CLI, VS Code), Cline and Windsurf.
+RS itself reads internal state and needs a model you run yourself. RS guard watches **the actions** instead, so it works with agents you cannot look inside. It hooks into Claude Code, Codex CLI, Gemini CLI, Cursor, GitHub Copilot (CLI, VS Code), Antigravity, Cline and Windsurf.
 
 ### What it stops
 
@@ -193,7 +193,7 @@ When it stops, Claude Code shows its usual confirmation prompt. Choose Yes for n
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.5#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (keeps existing settings, saves a backup)
 ```

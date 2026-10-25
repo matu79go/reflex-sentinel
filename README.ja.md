@@ -83,7 +83,7 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 **AI エージェントがツールを使う直前に、その手があなたの「普段」に無いものなら止めて、確認を求めます。** 普段は、手元にある Claude Code の会話記録から自動で作ります。許可の一覧を書く必要はありません。LLM を呼ばず、外へは何も送りません(1 回 0.1 秒ほど)。
 
-内部状態を読む RS 本体は、自分で動かすモデルが要ります。RS guard は、中を見られないエージェントでも使えるように、**行動の方**を見張ります。Claude Code・Codex CLI・Gemini CLI・Cursor・GitHub Copilot(CLI・VS Code)・Cline・Windsurf の実行前のフックにつなぎます。
+内部状態を読む RS 本体は、自分で動かすモデルが要ります。RS guard は、中を見られないエージェントでも使えるように、**行動の方**を見張ります。Claude Code・Codex CLI・Gemini CLI・Cursor・GitHub Copilot(CLI・VS Code)・Antigravity・Cline・Windsurf の実行前のフックにつなぎます。
 
 ### 何を止めるか
 
@@ -109,7 +109,7 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.5#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(既存の設定は残し、元を保存)
 ```
