@@ -8,6 +8,7 @@
                             copilot / cline / windsurf / all(入っている物すべて)
   rs-guard hook <道具> <出来事>  各道具のフックの入口(入力・出力の形は agents.py でそろえる)
   rs-guard status / explain 普段の件数 / 最近の確認とその理由
+  rs-guard update [--check] GitHub の最新の版を見て、新しければ入れ直す(打った時だけ外へ問い合わせる。普段の記録は残る)
 
 判定 = core.decide(MCP と Web の手を似た過去の依頼と比べる)+ acts(すべての手。シェル・ファイル・スクリプトを含む)。
 置き場は ~/.rs-guard/(環境変数 RS_GUARD_HOME で変えられる)。値そのもの(宛先・本文)は残さない(送り先はハッシュ)。
@@ -17,8 +18,11 @@ import glob
 import secrets
 import json
 import os
+import re
+import subprocess
 import sys
 import time
+import urllib.request
 
 import hashlib
 
@@ -364,9 +368,11 @@ def approved_ids():
 
 
 def prompt(inp):
-    """UserPromptSubmit の入力 → 利用者の発言を覚え書きに足す。"""
-    if inp.get("prompt"):
-        _note(_session_of(inp), {"k": "human", "t": inp["prompt"]})
+    """UserPromptSubmit の入力 → 利用者の発言を覚え書きに足す。システムの通知・別の会話からの依頼など「<」で始まる差し込みは
+    除く(会話記録を読む側の claude.is_human と同じ扱い)。貼り付け(<pasted_content>)は残し、本人の言葉と分けるのは後の段。"""
+    t = inp.get("prompt") or ""
+    if t.strip() and (not t.lstrip().startswith("<") or t.lstrip().startswith("<pasted_content")):
+        _note(_session_of(inp), {"k": "human", "t": t})
 
 
 def cmd_claude_pre(a):
@@ -604,6 +610,43 @@ def cmd_explain(a):
         print("確認を求めた記録はまだありません")
 
 
+# ---- update ----
+
+REPO = "https://github.com/matu79go/reflex-sentinel"
+TAGS_API = "https://api.github.com/repos/matu79go/reflex-sentinel/tags?per_page=100"
+
+
+def _vtuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+
+
+def _latest_version():
+    """GitHub のタグの中で一番新しい版(v1.2.3 の形だけ)。git が無い環境でも動くよう API を使う。"""
+    with urllib.request.urlopen(TAGS_API, timeout=15) as r:
+        names = [t["name"] for t in json.load(r)]
+    vs = [n[1:] for n in names if re.fullmatch(r"v\d+\.\d+\.\d+", n)]
+    return max(vs, key=_vtuple) if vs else None
+
+
+def cmd_update(a):
+    """利用者が打った時だけ外へ問い合わせる(フックからは呼ばない)。入れ直すのは自分の venv(sys.executable)。普段の記録は残る。"""
+    from . import __version__ as cur
+    try:
+        latest = _latest_version()
+    except Exception as ex:  # noqa: BLE001
+        print(f"最新の版を確かめられませんでした: {ex}")
+        return
+    if not latest or _vtuple(latest) <= _vtuple(cur):
+        print(f"最新です(今の版 {cur})")
+        return
+    if a.check:
+        print(f"新しい版があります: {cur} → {latest}(入れ直すには rs-guard update)")
+        return
+    url = f"{REPO}/archive/refs/tags/v{latest}.zip#subdirectory=guard"  # git が無くても入る
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "--quiet", url])
+    print(f"{cur} → {latest} に更新しました(普段の記録はそのまま)" if r.returncode == 0 else f"更新に失敗しました(pip の終了コード {r.returncode})")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="rs-guard")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -626,6 +669,9 @@ def main(argv=None):
     p = sub.add_parser("explain")
     p.add_argument("-n", type=int, default=10)
     p.set_defaults(f=cmd_explain)
+    p = sub.add_parser("update")
+    p.add_argument("--check", action="store_true", help="新しい版があるか見るだけ(入れ直さない)")
+    p.set_defaults(f=cmd_update)
     a = ap.parse_args(argv)
     a.f(a)
 

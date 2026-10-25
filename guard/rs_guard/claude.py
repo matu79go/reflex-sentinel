@@ -78,9 +78,20 @@ def events(path, tail=None):
 REQ_TURNS = 3
 
 
+REQ_SHORT = 20  # これより短い発言(「OK」「再起動しました」のような続き)は、依頼の回数に数えない
+REQ_MAX = 8  # さかのぼる発言の上限
+
+
 def request_of(humans):
-    """今の依頼 = 最後の数回の利用者の発言(「いいよ すすめて」のような続きだけでは仕事の種類が分からないため)。"""
-    return "\n".join(humans[-REQ_TURNS:])
+    """今の依頼 = 最後の数回の利用者の発言(「いいよ すすめて」のような続きだけでは仕事の種類が分からないため)。
+    短い続きの発言は数えずにさかのぼり、中身のある発言が REQ_TURNS 回分になるまで(最大 REQ_MAX 回)を使う。"""
+    out, n = [], 0
+    for h in reversed(humans):
+        out.append(h)
+        n += len(h.strip()) >= REQ_SHORT
+        if n >= REQ_TURNS or len(out) >= REQ_MAX:
+            break
+    return "\n".join(reversed(out))
 
 
 def history(path, upto_id=None, tail=None, pastes=None):

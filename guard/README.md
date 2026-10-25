@@ -68,10 +68,19 @@ Replaying 15 Codex logs the same way (9 days, 2,579 actions) gave 12 confirmatio
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.3#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (or: install codex, …)
 ```
+
+### Updating
+
+```bash
+~/.rs-guard/venv/bin/rs-guard update          # check GitHub for the latest release and reinstall if newer (your normal records stay)
+~/.rs-guard/venv/bin/rs-guard update --check  # only check whether a newer release exists
+```
+
+RS guard contacts the network only when you run this command (the hooks never do).
 
 ### Supported tools
 

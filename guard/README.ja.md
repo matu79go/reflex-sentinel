@@ -66,10 +66,19 @@ Codex の会話記録 15 本(9 日、手 2,579 回)を同じように流すと�
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.3#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(1 つだけなら install codex など)
 ```
+
+### 更新のしかた
+
+```bash
+~/.rs-guard/venv/bin/rs-guard update          # GitHub の最新の版を見て、新しければ入れ直す(普段の記録はそのまま)
+~/.rs-guard/venv/bin/rs-guard update --check  # 新しい版があるか見るだけ
+```
+
+外へ問い合わせるのは、このコマンドを打った時だけです(フックが動く時は問い合わせません)。
 
 ### 使える道具
 

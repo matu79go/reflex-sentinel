@@ -193,10 +193,19 @@ When it stops, Claude Code shows its usual confirmation prompt. Choose Yes for n
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.3#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (keeps existing settings, saves a backup)
 ```
+
+### Updating
+
+```bash
+~/.rs-guard/venv/bin/rs-guard update          # check GitHub for the latest release and reinstall if newer (your normal records stay)
+~/.rs-guard/venv/bin/rs-guard update --check  # only check whether a newer release exists
+```
+
+RS guard contacts the network only when you run this command (the hooks never do).
 
 Then use your agent as usual. Tools without a confirmation prompt (Codex, Gemini CLI, Cline, Windsurf) block once and the agent comes back to ask you; reply "ok" if it is fine. Per-tool notes: [`guard/README.md`](guard/README.md#supported-tools); step-by-step for Codex (trusting the hooks, replying when it stops): [`guard/README.md`](guard/README.md#using-it-with-codex). `rs-guard status` shows how often it asked; `rs-guard explain` shows recent confirmations, why, and whether you approved. To remove it, restore `~/.claude/settings.json.rs-guard.bak`.
 

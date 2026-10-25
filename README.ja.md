@@ -109,10 +109,19 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.3#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.4#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(既存の設定は残し、元を保存)
 ```
+
+### 更新のしかた
+
+```bash
+~/.rs-guard/venv/bin/rs-guard update          # GitHub の最新の版を見て、新しければ入れ直す(普段の記録はそのまま)
+~/.rs-guard/venv/bin/rs-guard update --check  # 新しい版があるか見るだけ
+```
+
+外へ問い合わせるのは、このコマンドを打った時だけです(フックが動く時は問い合わせません)。
 
 あとはいつもどおりエージェントを使うだけです。確認の画面が無い道具(Codex・Gemini CLI・Cline・Windsurf)では、一度止めてエージェントが確かめに来るので、良ければ「いいよ」と返事します。道具ごとの注意は [`guard/README.ja.md`](guard/README.ja.md#使える道具)、Codex での使い方(信頼の手順・止まった時の返事)は [`guard/README.ja.md`](guard/README.ja.md#codex-での使い方) にあります。`rs-guard status` で確認の回数、`rs-guard explain` で最近の確認とその理由・通したか拒否したかを見られます。外す時は `~/.claude/settings.json.rs-guard.bak` に戻します。
 
