@@ -160,11 +160,11 @@ def context_of(inp, full=False):
     base = claude.request_of(humans), " ".join(humans).lower(), outputs
     if not full:
         return base
-    owns, snips = [], []
+    owns, snips, sn = [], [], load_seen()
     for h in humans + pastes:
         own, pasted = acts.split_own(h) if h in humans else ("", h)
         owns.append(own)
-        snips += acts.instruction_snippets(pasted)
+        snips += [x for x in acts.instruction_snippets(pasted) if acts.snippet_key(x[0], sn.salt) not in sn.ok7]  # 確認で通した指示は止めない
     own_text = " ".join(owns)
     return base + ({"own_text": own_text, "own_toks": acts.toks(own_text), "snips": snips, **sess},)
 
@@ -332,6 +332,9 @@ def post(inp, cfg=None):
     _note(session, _result_note(tool, inp))
     if inp.get("tool_use_id") and inp["tool_use_id"] in _asked_ids():
         _append("done.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "id": inp["tool_use_id"]}])  # 確認のあと通した
+        act = acts.action_tokens(tool, args, [])
+        keys = {acts.snippet_key(s[0], seen.salt) for s in x["snips"] if acts.follows(act, [s], x["own_toks"])}
+        _append("seen.jsonl", [{"k": "ok7", "v": k} for k in keys - seen.ok7])  # 通した指示 = 普段(セッション・道具をまたぐ)
     if not core.is_acting(tool, cfg["extra_tools"]):
         return None
     if not req:

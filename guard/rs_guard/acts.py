@@ -509,6 +509,11 @@ def follows(act, snippets, own):
     return None
 
 
+def snippet_key(ts, salt=""):
+    """貼り付けの指示の片(語の並び)の残し方: ハッシュ。セッション・道具をまたいで同じ指示なら同じ値。"""
+    return dest_key(" ".join(sorted(ts)), salt)
+
+
 # ---- 普段と判定 ----
 
 def dest_key(d, salt=""):
@@ -517,13 +522,14 @@ def dest_key(d, salt=""):
 
 
 class Seen:
-    """普段 = 見たことのある手の形・送り先のハッシュ・(手の形, 引数名, 出どころ)の組。"""
+    """普段 = 見たことのある手の形・送り先のハッシュ・(手の形, 引数名, 出どころ)の組・確認で通した貼り付けの指示のハッシュ。"""
 
     def __init__(self, salt=""):
-        self.shapes, self.dests, self.sigs, self.held, self.salt = set(), set(), set(), set(), salt
+        self.shapes, self.dests, self.sigs, self.held, self.ok7, self.salt = set(), set(), set(), set(), set(), salt
 
     def add(self, kind, x):
-        getattr(self, kind).add(tuple(x) if isinstance(x, list) else x)
+        if hasattr(self, kind):  # 新しい版が足した種類は読み飛ばす
+            getattr(self, kind).add(tuple(x) if isinstance(x, list) else x)
 
     @classmethod
     def load(cls, path, salt=""):
