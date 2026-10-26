@@ -109,7 +109,7 @@ Hugging Face: [matu79go/reflex-sentinel-agent-trajectories](https://huggingface.
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.6#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.7#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # 手元の会話記録(Claude Code・Codex)から普段を作る
 ~/.rs-guard/venv/bin/rs-guard install all    # 入っている道具すべてにフックを足す(既存の設定は残し、元を保存)
 ```

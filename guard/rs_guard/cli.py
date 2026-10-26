@@ -3,6 +3,7 @@
   rs-guard learn            会話記録から普段を作る(取り込み済みで変わっていない会話は飛ばす)
   rs-guard claude-pre       PreToolUse のフック(普段の範囲 → 何も出さない / 外れ → 確認を求める)
   rs-guard claude-post      PostToolUse のフック(実行された手を普段に加える、結果を会話ごとの覚え書きに足す)
+  rs-guard claude-post-failure  PostToolUseFailure のフック(確認のあと通して失敗した手も普段に加える)
   rs-guard claude-prompt    UserPromptSubmit のフック(利用者の発言を会話ごとの覚え書きに足す)
   rs-guard install <道具>   道具の設定にフックを足す(既存のフックは残す)。道具 = claude / codex / gemini / cursor /
                             copilot / cline / windsurf / antigravity / all(入っている物すべて)
@@ -307,6 +308,7 @@ def judge(inp, normal=None, cfg=None, retry=False):
         fp = _fingerprint(tool, args)
         if _confirmed(session, fp):
             decision, rules, reason = "allow", ["confirmed"], ""
+            _learn(st, inp, req, user_text, outputs, x, cfg, approved=True)  # 利用者が良いと言った = 実行の成否によらず覚える
         else:
             _note(session, {"k": "denied", "fp": fp})
             decision = "deny"
@@ -319,30 +321,46 @@ def judge(inp, normal=None, cfg=None, retry=False):
     return decision, reason, rules
 
 
+def _learn(st, inp, req, user_text, outputs, x, cfg, approved=False):
+    """実行された手・利用者が通した手を普段に加える(道具・セッションをまたいで使う)。外に作用する手なら依頼つきの行を返す。"""
+    tool, args = inp.get("tool_name", ""), inp.get("tool_input") or {}
+    seen = load_seen()
+    _append("seen.jsonl", st.learned(seen))  # すべての手の普段
+    if approved:  # 通した貼り付けの指示も普段に
+        act = acts.action_tokens(tool, args, [])
+        keys = {acts.snippet_key(s[0], seen.salt) for s in x["snips"] if acts.follows(act, [s], x["own_toks"])}
+        _append("seen.jsonl", [{"k": "ok7", "v": k} for k in keys - seen.ok7])
+    if not core.is_acting(tool, cfg["extra_tools"]) or not req:
+        return None
+    r = _row(_session_of(inp), tool, args, req, user_text, outputs)
+    r["id"] = inp.get("tool_use_id")  # 確認のあと通したかを、判定の記録と突き合わせるため
+    _append("normal.jsonl", [r])
+    return r
+
+
 def post(inp, cfg=None):
     """PostToolUse の入力 → 結果を覚え書きに足し、外に作用する手なら普段に加える行を返す(対象外なら None)。"""
     cfg = cfg or config()
     tool, args = inp.get("tool_name", ""), inp.get("tool_input") or {}
     session = _session_of(inp)
     req, user_text, outputs, x = context_of(inp, full=True)
-    seen = load_seen()
     st = acts.Step(tool, args, user_text, x["own_text"], outputs, cwd=inp.get("cwd", ""))
-    _append("seen.jsonl", st.learned(seen))  # 実行された手 = 普段(すべての手)に加える
     _note(session, {"k": "act", "sigs": [list(s) for s in st.sig | set(st.web)], "sens": st.sens})
     _note(session, _result_note(tool, inp))
-    if inp.get("tool_use_id") and inp["tool_use_id"] in _asked_ids():
+    asked = bool(inp.get("tool_use_id")) and inp["tool_use_id"] in _asked_ids()
+    if asked:
         _append("done.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "id": inp["tool_use_id"]}])  # 確認のあと通した
-        act = acts.action_tokens(tool, args, [])
-        keys = {acts.snippet_key(s[0], seen.salt) for s in x["snips"] if acts.follows(act, [s], x["own_toks"])}
-        _append("seen.jsonl", [{"k": "ok7", "v": k} for k in keys - seen.ok7])  # 通した指示 = 普段(セッション・道具をまたぐ)
-    if not core.is_acting(tool, cfg["extra_tools"]):
-        return None
-    if not req:
-        return None
-    r = _row(session, tool, args, req, user_text, outputs)
-    r["id"] = inp.get("tool_use_id")  # 確認のあと通したかを、判定の記録と突き合わせるため
-    _append("normal.jsonl", [r])
-    return r
+    return _learn(st, inp, req, user_text, outputs, x, cfg, approved=asked)
+
+
+def post_failure(inp, cfg=None):
+    """失敗時のフック(Claude Code の PostToolUseFailure)の入力。実行が始まってから失敗した手だけが来る(拒否した手は来ない)。
+    確認のあと通した手なら、成功した時と同じに覚える(Yes を押したことが大事で、コマンドの成否は関係ない)。"""
+    inp = {**inp, "tool_response": inp.get("error", "")}
+    if inp.get("tool_use_id") and inp["tool_use_id"] in _asked_ids():
+        return post(inp, cfg)
+    _note(_session_of(inp), _result_note(inp.get("tool_name", ""), inp))
+    return None
 
 
 def _asked_ids(tail=200_000):
@@ -394,6 +412,7 @@ def cmd_claude_prompt(a):
     try:
         prompt(_hook_input())
         clean_sessions()
+        heal_claude_hooks()
     except Exception as ex:  # noqa: BLE001
         _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "error": repr(ex)[:200]}])
 
@@ -401,6 +420,13 @@ def cmd_claude_prompt(a):
 def cmd_claude_post(a):
     try:
         post(_hook_input())
+    except Exception as ex:  # noqa: BLE001
+        _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "error": repr(ex)[:200]}])
+
+
+def cmd_claude_post_failure(a):
+    try:
+        post_failure(_hook_input())
     except Exception as ex:  # noqa: BLE001
         _append("decisions.jsonl", [{"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "error": repr(ex)[:200]}])
 
@@ -443,7 +469,9 @@ def cmd_hook(a):
 
 # ---- install ----
 
-HOOK_PRE, HOOK_POST, HOOK_PROMPT = "claude-pre", "claude-post", "claude-prompt"
+HOOK_PRE, HOOK_POST, HOOK_PROMPT, HOOK_FAIL = "claude-pre", "claude-post", "claude-prompt", "claude-post-failure"
+CLAUDE_HOOKS = (("PreToolUse", HOOK_PRE), ("PostToolUse", HOOK_POST), ("PostToolUseFailure", HOOK_FAIL),
+                ("UserPromptSubmit", HOOK_PROMPT))
 
 
 def _exe():
@@ -460,9 +488,9 @@ def _is_ours(cmd, sub):
 
 
 def install_claude(settings):
-    """settings の dict に 3 つのフックを足す(既にあれば何もしない、既存のフックは残す)。"""
+    """settings の dict に 4 つのフックを足す(既にあれば何もしない、既存のフックは残す)。"""
     hooks = settings.setdefault("hooks", {})
-    for event, cmd in (("PreToolUse", HOOK_PRE), ("PostToolUse", HOOK_POST), ("UserPromptSubmit", HOOK_PROMPT)):
+    for event, cmd in CLAUDE_HOOKS:
         groups = hooks.setdefault(event, [])
         if any(_is_ours(h.get("command", ""), cmd) for g in groups for h in g.get("hooks", [])):
             continue
@@ -471,6 +499,30 @@ def install_claude(settings):
             g = {"matcher": "*", **g}
         groups.append(g)
     return settings
+
+
+def heal_claude_hooks(path=None):
+    """古い版で入れた Claude Code の設定に、後の版で増えたフックを足す(rs-guard update だけで新しい版が全部効くように)。
+    RS を入れていない設定には触らない。足すフックの実行ファイルは、入っている RS のフックと同じ場所。→ 足したか。"""
+    p = path or CLAUDE_SETTINGS
+    if not os.path.exists(p):
+        return False
+    with open(p, encoding="utf-8", errors="replace") as f:
+        hooks = (json.load(f) or {}).get("hooks") or {}
+    cmds = {ev: [h.get("command", "") for g in hooks.get(ev, []) for h in g.get("hooks", [])] for ev, _ in CLAUDE_HOOKS}
+    pre = [c for c in cmds["PreToolUse"] if _is_ours(c, HOOK_PRE)]
+    missing = [(ev, cmd) for ev, cmd in CLAUDE_HOOKS if not any(_is_ours(c, cmd) for c in cmds[ev])]
+    if not pre or not missing:
+        return False
+    exe = pre[0][:-len(HOOK_PRE)].rstrip()
+
+    def add(st):
+        hs = st.setdefault("hooks", {})
+        for ev, cmd in missing:
+            g = {"hooks": [{"type": "command", "command": f"{exe} {cmd}"}]}
+            hs.setdefault(ev, []).append(g if ev == "UserPromptSubmit" else {"matcher": "*", **g})
+    _edit_json(p, add)
+    return True
 
 
 def _edit_json(p, fn):
@@ -679,6 +731,7 @@ def main(argv=None):
     sub.add_parser("claude-pre").set_defaults(f=cmd_claude_pre)
     sub.add_parser("claude-post").set_defaults(f=cmd_claude_post)
     sub.add_parser("claude-prompt").set_defaults(f=cmd_claude_prompt)
+    sub.add_parser("claude-post-failure").set_defaults(f=cmd_claude_post_failure)
     p = sub.add_parser("hook")
     p.add_argument("agent")
     p.add_argument("event")

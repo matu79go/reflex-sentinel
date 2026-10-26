@@ -376,7 +376,7 @@ def test_cache_does_not_duplicate_transcript(tmp_path, rshome):
 
 
 def test_prompt_hook_process_prints_nothing(tmp_path, rshome):
-    env = {**os.environ, "RS_GUARD_HOME": str(rshome)}
+    env = {**os.environ, "RS_GUARD_HOME": str(rshome), "HOME": str(tmp_path)}  # 本物の ~/.claude/settings.json に触らない
     p, _ = _run(["claude-prompt"], json.dumps({"session_id": "x", "prompt": "こんにちは"}), env)
     assert p.returncode == 0 and p.stdout == ""  # 標準出力は AI の文脈に入るので何も出さない
 
@@ -640,6 +640,50 @@ def test_retry_after_user_says_ok(rshome):
     cli.prompt({"session_id": "s", "prompt": "いいよ、送って"})
     d, _, rules = cli.judge(inp, retry=True)
     assert d == "allow" and rules == ["confirmed"]
+
+
+def test_yes_then_failed_command_is_still_learned(tmp_path, rshome):
+    """Yes で通した手が失敗して終わっても覚える(Claude Code は失敗時のフック PostToolUseFailure)。
+    確認していない手の失敗は「確認のあと通した」に数えない。"""
+    tp = write(tmp_path / "now.jsonl", [human("サーバーの状態を見て")])
+    inp = {"session_id": "now", "transcript_path": tp, "tool_name": "Bash", "tool_use_id": "f1",
+           "tool_input": {"command": "ssh -o ConnectTimeout=3 newhost-zz.example.com uptime"}}
+    assert cli.pre(inp) is not None
+    cli.post_failure({**inp, "error": "Exit code 255\nssh: connect timed out", "is_interrupt": False})
+    assert "f1" in cli.approved_ids()
+    tp2 = write(tmp_path / "other.jsonl", [human("サーバーの状態を見て")])
+    assert cli.pre({**inp, "session_id": "other", "transcript_path": tp2, "tool_use_id": "f2"}) is None
+    cli.post_failure({**inp, "tool_use_id": "f3", "error": "Exit code 1"})  # 確認していない手
+    assert "f3" not in cli.approved_ids()
+
+
+def test_retry_confirmed_is_learned_without_post(rshome):
+    """確認の画面が無い道具(Codex 等): 利用者が良いと言った後のやり直しで通した時点で覚える(実行が失敗しても)。
+    別のセッションでは、確かめ直さずに通す。"""
+    inp = agents.normalize("codex", "PreToolUse", PRE["codex"][1])[1][0]
+    assert cli.judge(inp, retry=True)[0] == "deny"
+    cli.prompt({"session_id": "s", "prompt": "いいよ、送って"})
+    assert cli.judge(inp, retry=True)[0] == "allow"
+    d, _, rules = cli.judge({**inp, "session_id": "s2", "tool_use_id": "u2"}, retry=True)
+    assert d == "allow" and rules == []
+
+
+def test_claude_failure_hook_installed_and_healed(tmp_path):
+    """入れる時に失敗時のフックも足す。古い版で入れた設定(3 つだけ)は、発言のフックが動いた時に足して直す。"""
+    sp = tmp_path / "settings.json"
+    cli.main(["install", "claude", "--settings", str(sp)])
+    s = json.loads(sp.read_text())
+    assert s["hooks"]["PostToolUseFailure"][0]["hooks"][0]["command"].endswith("rs-guard claude-post-failure")
+    del s["hooks"]["PostToolUseFailure"]
+    s["hooks"]["PreToolUse"][0]["hooks"][0]["command"] = "/opt/rs venv/bin/rs-guard claude-pre"  # 入れた時の場所
+    sp.write_text(json.dumps(s))
+    assert cli.heal_claude_hooks(str(sp)) is True
+    assert json.loads(sp.read_text())["hooks"]["PostToolUseFailure"][0]["hooks"][0]["command"] == \
+        "/opt/rs venv/bin/rs-guard claude-post-failure"  # 入っている RS と同じ場所(PATH 任せにしない)
+    assert cli.heal_claude_hooks(str(sp)) is False  # 2 回目は何もしない
+    other = tmp_path / "other.json"  # RS を入れていない設定には足さない
+    other.write_text(json.dumps({"hooks": {}}))
+    assert cli.heal_claude_hooks(str(other)) is False and "PostToolUseFailure" not in json.loads(other.read_text())["hooks"]
 
 
 def test_normalize_tools():
