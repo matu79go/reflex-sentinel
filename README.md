@@ -193,7 +193,7 @@ When it stops, Claude Code shows its usual confirmation prompt. Choose Yes for n
 
 ```bash
 python3 -m venv ~/.rs-guard/venv
-~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.7#subdirectory=guard"
+~/.rs-guard/venv/bin/pip install "git+https://github.com/matu79go/reflex-sentinel@v1.1.8#subdirectory=guard"
 ~/.rs-guard/venv/bin/rs-guard learn          # build your usual work from local logs (Claude Code, Codex)
 ~/.rs-guard/venv/bin/rs-guard install all    # add hooks to every installed tool (keeps existing settings, saves a backup)
 ```

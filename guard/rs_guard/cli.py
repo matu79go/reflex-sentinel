@@ -345,7 +345,7 @@ def post(inp, cfg=None):
     session = _session_of(inp)
     req, user_text, outputs, x = context_of(inp, full=True)
     st = acts.Step(tool, args, user_text, x["own_text"], outputs, cwd=inp.get("cwd", ""))
-    _note(session, {"k": "act", "sigs": [list(s) for s in st.sig | set(st.web)], "sens": st.sens})
+    _note(session, {"k": "act", "sigs": [list(s) for s in st.sig | set(st.web_sigs(salt()))], "sens": st.sens})
     _note(session, _result_note(tool, inp))
     asked = bool(inp.get("tool_use_id")) and inp["tool_use_id"] in _asked_ids()
     if asked:

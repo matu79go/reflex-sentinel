@@ -43,6 +43,7 @@ CONFIG_P = {"crontab", "chmod", "chown", "sudo", "ssh-keygen", "ssh-add", "git-c
 EXEC_P = {"python", "python3", "node", "deno", "ruby", "perl", "bash", "sh", "zsh", "uv-run", "cargo-run", "npm-run",
           "make", "java", "go"}
 RISKY = {"egress", "destructive", "config"}
+RE_FETCH_URL = re.compile(r"https?://[^\s'\"`|;&<>()]+", re.I)  # curl・wget の URL
 EXT_TOOLS = {"WebFetch", "WebSearch"}  # 外から来た中身を返すツール(mcp__ もすべて)
 REDIRECT = re.compile(r"(?:>>?|\btee\s+(?:-a\s+)?)\s*(\S+)")
 SSH_HOST = re.compile(r"(?:^|\s)(?:[\w.-]+@)?([A-Za-z][\w.-]*):(?!/)|\bssh\s+(?:-\S+\s+(?:\S+\s+)?)*(?:[\w.-]+@)?([A-Za-z][\w.-]*)")
@@ -571,15 +572,20 @@ class Step:
         self.held = held_targets(tool, self.args, self.scripts)
 
     def _web_sigs(self, user_text, outputs):
-        """取ってくるだけの curl・wget の URL の出どころ → [(Bash:fetch, url, 出どころ)]。"""
+        """取ってくるだけの curl・wget の URL の出どころ → [(出どころ, 先)]。"""
         if self.tool != "Bash" or not {"Bash:curl", "Bash:wget"} & set(self.shs):
             return []
         out = []
-        for u in core.RE_URL.findall(self.args.get("command", "")):
+        for u in RE_FETCH_URL.findall(self.args.get("command", "")):  # 末尾(.com 等)の一覧に頼らない(10-27)
             if "://" in u:
                 wp = core.web_provenance({"url": u}, user_text, outputs)
-                out += [("Bash:fetch", "url", p) for ps in wp.values() for p in ps]
+                out += [(p, core._host(u.lower())) for ps in wp.values() for p in ps]
         return out
+
+    def web_sigs(self, salt=""):
+        """→ [(Bash:fetch, url か 先のハッシュ, 出どころ)]。読んだ中身から来た先は先ごとに覚える
+        (先の無い形では、一度通すとどの先も通っていた。10-27)。依頼・検索・新しい先は今までどおり。"""
+        return [("Bash:fetch", "url" if p in core.WEB_OK else "h:" + dest_key(h, salt), p) for p, h in self.web]
 
     def check(self, seen, sess_sigs=(), sens_before=False, snippets=(), own_toks=frozenset()):
         """→ [(合図, 補足)]。空なら通す。"""
@@ -596,8 +602,9 @@ class Step:
                           and d.split(":")[-1] not in ot and d not in ot)
         if new_dest:
             fired.append(("R3" if sens_before or self.sens else "R5", new_dest[0]))  # 同じ手の中で鍵を読んで送るのも R3
-        if any(p[2] not in core.WEB_OK for p in self.web) and not set(self.web) <= known:
-            fired.append(("R6", next(p[2][5:] for p in self.web if p[2] not in core.WEB_OK)))
+        web = self.web_sigs(seen.salt)
+        if any(p[2] not in core.WEB_OK for p in web) and not set(web) <= known:
+            fired.append(("R6", next(p[2][5:] for p in web if p[2] not in core.WEB_OK)))
         hit = follows(action_tokens(self.tool, self.args, []), snippets, own_toks) if snippets else None
         if hit:
             fired.append(("R7", hit))
@@ -611,7 +618,7 @@ class Step:
         """実行された後に普段へ足す物 → [{"k": 種類, "v": 値}](まだ無い物だけ)。"""
         rows = [{"k": "shapes", "v": x} for x in self.shs if x not in seen.shapes]
         rows += [{"k": "dests", "v": h} for h in {dest_key(d, seen.salt) for d in self.dests} if h not in seen.dests]
-        rows += [{"k": "sigs", "v": list(x)} for x in self.sig | set(self.web) if x not in seen.sigs]
+        rows += [{"k": "sigs", "v": list(x)} for x in self.sig | set(self.web_sigs(seen.salt)) if x not in seen.sigs]
         rows += [{"k": "held", "v": h} for h in {dest_key(d, seen.salt) for d in self.held} if h not in seen.held]
         for r in rows:
             seen.add(r["k"], r["v"])
